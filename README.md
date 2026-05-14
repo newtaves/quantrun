@@ -43,3 +43,14 @@ note django will send an api request fastapi server to use functions of fastapi.
 the database will be primarialy created and managed from the django.
 
 in future django app will be modified to store the algorithms to automatically trade also.
+
+
+## Resources
+- [Binance api reference](https://github.com/binance/binance-connector-python/tree/master/clients/spot)
+- [Django](https://docs.djangoproject.com/en/6.0/intro/tutorial01/)
+- [FastAPI](https://fastapi.tiangolo.com/)
+- [SqlModel](https://sqlmodel.tiangolo.com/tutorial/)
+- [UV download link](https://docs.astral.sh/uv/getting-started/installation/)
+
+## AI Use Policy
+You can use AI as much as you want. But make sure that you know what AI is changing. You should be the one who make decisions.

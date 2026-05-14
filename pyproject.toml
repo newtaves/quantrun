@@ -9,4 +9,5 @@ dependencies = [
     "django>=6.0.5",
     "fastapi[standard]>=0.136.1",
     "sqlmodel>=0.0.38",
+    "websockets>=15.0.1",
 ]

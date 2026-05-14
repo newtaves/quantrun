@@ -1050,6 +1050,7 @@ dependencies = [
     { name = "django" },
     { name = "fastapi", extra = ["standard"] },
     { name = "sqlmodel" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -1058,6 +1059,7 @@ requires-dist = [
     { name = "django", specifier = ">=6.0.5" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.136.1" },
     { name = "sqlmodel", specifier = ">=0.0.38" },
+    { name = "websockets", specifier = ">=15.0.1" },
 ]
 
 [[package]]
