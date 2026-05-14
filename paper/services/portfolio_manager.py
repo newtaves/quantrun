@@ -1,316 +1,260 @@
 from decimal import Decimal
-from typing import List, Optional
+from typing import Dict, List, Optional
 
-from db.models import Portfolio, Order, Position
+from sqlmodel import Session, select
+
+from paper.db.models import Order, OrderSide, OrderStatus, Portfolio, Position
+from paper.services.market_data import market_data_streamer
 
 
 class PortfolioManager:
-    """
-    Service layer responsible for:
-    - portfolio management
-    - order management
-    - pnl calculations
-    - holdings retrieval
-    - portfolio analytics
-    """
+    def __init__(self, session: Session) -> None:
+        self.session = session
 
     async def create_portfolio(self, data: Portfolio) -> Portfolio:
-        """
-        Create a new portfolio and store it in database.
-
-        Responsibilities:
-        - validate portfolio name
-        - initialize balances
-        - assign ownership
-        - persist to database
-
-        Parameters:
-        - data: Portfolio object
-
-        Returns:
-        - Created Portfolio
-        """
-        ...
+        self.session.add(data)
+        self.session.commit()
+        self.session.refresh(data)
+        return data
 
     async def get_portfolios(self, user_id: int) -> List[Portfolio]:
-        """
-        Fetch all portfolios owned by a user.
-
-        Parameters:
-        - user_id: User identifier
-
-        Returns:
-        - List of portfolios
-        """
-        ...
+        statement = select(Portfolio).where(Portfolio.user_id == user_id)
+        return list(self.session.exec(statement).all())
 
     async def get_portfolio(self, portfolio_id: int) -> Optional[Portfolio]:
-        """
-        Fetch a single portfolio by ID.
-
-        Parameters:
-        - portfolio_id: Portfolio identifier
-
-        Returns:
-        - Portfolio if found
-        """
-        ...
+        return self.session.get(Portfolio, portfolio_id)
 
     async def delete_portfolio(self, portfolio_id: int) -> None:
-        """
-        Delete a portfolio.
+        portfolio = self.session.get(Portfolio, portfolio_id)
+        if not portfolio:
+            return
 
-        Responsibilities:
-        - validate no active positions
-        - validate no pending orders
-        - remove portfolio
+        positions = self.session.exec(
+            select(Position).where(Position.portfolio_id == portfolio_id)
+        ).all()
+        if positions:
+            raise ValueError("Cannot delete portfolio with active positions")
 
-        Parameters:
-        - portfolio_id: Portfolio identifier
-        """
-        ...
+        pending_orders = self.session.exec(
+            select(Order).where(
+                Order.portfolio_id == portfolio_id,
+                Order.status == OrderStatus.PENDING,
+            )
+        ).all()
+        if pending_orders:
+            raise ValueError("Cannot delete portfolio with pending orders")
+
+        self.session.delete(portfolio)
+        self.session.commit()
 
     async def get_positions(self, portfolio_id: int) -> List[Position]:
-        """
-        Fetch all active positions
-        belonging to a portfolio.
-
-        Parameters:
-        - portfolio_id: Portfolio identifier
-
-        Returns:
-        - List of active positions
-        """
-        ...
+        statement = select(Position).where(Position.portfolio_id == portfolio_id)
+        return list(self.session.exec(statement).all())
 
     async def get_position(self, position_id: int) -> Optional[Position]:
-        """
-        Fetch a single active position.
-
-        Parameters:
-        - position_id: Position identifier
-
-        Returns:
-        - Position if found
-        """
-        ...
+        return self.session.get(Position, position_id)
 
     async def get_position_summary(self, portfolio_id: int) -> dict:
-        """
-        Fetch summarized position information.
-
-        Includes:
-        - invested capital
-        - unrealized pnl
-        - number of positions
-        - exposure
-
-        Parameters:
-        - portfolio_id: Portfolio identifier
-
-        Returns:
-        - Position summary dictionary
-        """
-        ...
+        positions = await self.get_positions(portfolio_id)
+        total_invested = sum(
+            p.average_price * p.quantity for p in positions
+        )
+        total_unrealized_pnl = sum(p.unrealized_pnl for p in positions)
+        return {
+            "total_positions": len(positions),
+            "invested_capital": float(total_invested),
+            "unrealized_pnl": float(total_unrealized_pnl),
+            "exposure": float(total_invested),
+        }
 
     async def get_available_cash(self, portfolio_id: int) -> Decimal:
-        """
-        Return currently available cash
-        for trading.
-
-        Parameters:
-        - portfolio_id: Portfolio identifier
-
-        Returns:
-        - Available cash
-        """
-        ...
+        portfolio = self.session.get(Portfolio, portfolio_id)
+        if not portfolio:
+            return Decimal("0")
+        return portfolio.available_cash
 
     async def get_invested_cash(self, portfolio_id: int) -> Decimal:
-        """
-        Calculate total invested capital
-        across all open positions.
+        positions = await self.get_positions(portfolio_id)
+        return sum(p.average_price * p.quantity for p in positions)
 
-        Parameters:
-        - portfolio_id: Portfolio identifier
+    async def calculate_total_pnl(self, portfolio_id: int) -> dict:
+        unrealized = await self.calculate_unrealized_pnl(portfolio_id)
+        realized = await self.calculate_realized_pnl(portfolio_id)
+        return {
+            "total_pnl": round(unrealized["total"] + realized, 5),
+            "unrealized_pnl": round(unrealized["total"], 5),
+            "realized_pnl": round(realized, 5),
+            "positions": unrealized["positions"],
+        }
 
-        Returns:
-        - Invested cash amount
-        """
-        ...
+    async def calculate_unrealized_pnl(self, portfolio_id: int) -> dict:
+        portfolio = self.session.get(Portfolio, portfolio_id)
+        if not portfolio:
+            return {"total": Decimal("0"), "positions": []}
 
-    async def calculate_total_pnl(self, portfolio_id: int) -> Decimal:
-        """
-        Calculate total portfolio pnl.
+        prices = market_data_streamer.get_all_market_prices()
+        positions = await self.get_positions(portfolio_id)
 
-        Includes:
-        - unrealized pnl
-        - realized pnl
+        total = Decimal("0")
+        position_pnls = []
+        for pos in positions:
+            raw_price = prices.get(pos.symbol)
+            if raw_price is not None:
+                current_price = Decimal(str(raw_price))
+                if pos.side == OrderSide.BUY:
+                    pnl = (current_price - pos.average_price) * pos.quantity
+                else:
+                    pnl = (pos.average_price - current_price) * pos.quantity
+                total += pnl
+                position_pnls.append({
+                    "position_id": pos.id,
+                    "symbol": pos.symbol,
+                    "side": pos.side.value,
+                    "quantity": float(pos.quantity),
+                    "average_price": float(pos.average_price),
+                    "current_price": float(current_price),
+                    "unrealized_pnl": round(float(pnl), 5),
+                })
+                pos.current_price = current_price
+                pos.unrealized_pnl = pnl
 
-        Parameters:
-        - portfolio_id: Portfolio identifier
-
-        Returns:
-        - Total pnl
-        """
-        ...
-
-    async def calculate_unrealized_pnl(self, portfolio_id: int) -> Decimal:
-        """
-        Calculate unrealized pnl
-        from active positions.
-
-        Parameters:
-        - portfolio_id: Portfolio identifier
-
-        Returns:
-        - Unrealized pnl
-        """
-        ...
+        self.session.commit()
+        return {"total": round(total, 5), "positions": position_pnls}
 
     async def calculate_realized_pnl(self, portfolio_id: int) -> Decimal:
-        """
-        Calculate realized pnl
-        from closed trades.
-
-        Parameters:
-        - portfolio_id: Portfolio identifier
-
-        Returns:
-        - Realized pnl
-        """
-        ...
+        portfolio = self.session.get(Portfolio, portfolio_id)
+        if not portfolio:
+            return Decimal("0")
+        return portfolio.total_pnl
 
     async def generate_pnl_report(self, portfolio_id: int) -> dict:
-        """
-        Generate complete pnl report.
+        total = await self.calculate_total_pnl(portfolio_id)
+        unrealized_details = await self.calculate_unrealized_pnl(portfolio_id)
+        portfolio = self.session.get(Portfolio, portfolio_id)
 
-        Includes:
-        - realized pnl
-        - unrealized pnl
-        - win/loss metrics
-        - capital usage
-
-        Parameters:
-        - portfolio_id: Portfolio identifier
-
-        Returns:
-        - PnL report dictionary
-        """
-        ...
+        return {
+            "portfolio_id": portfolio_id,
+            "portfolio_name": portfolio.name if portfolio else "Unknown",
+            "total_pnl": total["total_pnl"],
+            "unrealized_pnl": total["unrealized_pnl"],
+            "realized_pnl": total["realized_pnl"],
+            "available_cash": float(portfolio.available_cash) if portfolio else 0.0,
+            "invested_cash": float(portfolio.invested_cash) if portfolio else 0.0,
+            "positions": unrealized_details["positions"],
+        }
 
     async def place_order(self, order: Order) -> Order:
-        """
-        Create and register a new order.
+        portfolio = self.session.get(Portfolio, order.portfolio_id)
+        if not portfolio:
+            raise ValueError("Portfolio not found")
 
-        Responsibilities:
-        - validate available cash
-        - validate order parameters
-        - store pending order
-        - send to execution engine
+        order.quantity = Decimal(str(order.quantity))
+        if order.limit_price is not None:
+            order.limit_price = Decimal(str(order.limit_price))
+        if order.target is not None:
+            order.target = Decimal(str(order.target))
+        if order.stoploss is not None:
+            order.stoploss = Decimal(str(order.stoploss))
 
-        Parameters:
-        - order: Order object
+        if order.quantity <= 0:
+            raise ValueError("Quantity must be greater than 0")
 
-        Returns:
-        - Created order
-        """
-        ...
+        if order.limit_price is not None and order.limit_price <= 0:
+            raise ValueError("Limit price must be greater than 0")
 
-    async def modify_order(self, order_id: int, limit_price: Optional[Decimal] = None, target: Optional[Decimal] = None, stoploss: Optional[Decimal] = None ) -> Order:
-        """
-        Modify an existing pending order.
+        if order.limit_price is not None:
+            estimated_price = order.limit_price
+        else:
+            price = await market_data_streamer.get_market_price(order.symbol)
+            if price is None:
+                raise ValueError(f"Unable to fetch market price for {order.symbol}")
+            estimated_price = Decimal(str(price))
 
-        Allowed modifications:
-        - limit price
-        - target
-        - stoploss
+        estimated_cost = estimated_price * order.quantity
 
-        Parameters:
-        - order_id: Order identifier
-        - limit_price: Updated limit price
-        - target: Updated target
-        - stoploss: Updated stoploss
+        if order.side == OrderSide.BUY and portfolio.available_cash < estimated_cost:
+            raise ValueError(
+                f"Insufficient funds. Required: {estimated_cost}, "
+                f"Available: {portfolio.available_cash}"
+            )
 
-        Returns:
-        - Updated order
-        """
-        ...
+        order.status = OrderStatus.PENDING
+        self.session.add(order)
+        self.session.commit()
+        self.session.refresh(order)
+        return order
+
+    async def modify_order(
+        self,
+        order_id: int,
+        limit_price: Optional[Decimal] = None,
+        target: Optional[Decimal] = None,
+        stoploss: Optional[Decimal] = None,
+    ) -> Order:
+        order = self.session.get(Order, order_id)
+        if not order:
+            raise ValueError("Order not found")
+        if order.status != OrderStatus.PENDING:
+            raise ValueError("Only pending orders can be modified")
+
+        if limit_price is not None:
+            order.limit_price = limit_price
+        if target is not None:
+            order.target = target
+        if stoploss is not None:
+            order.stoploss = stoploss
+
+        self.session.add(order)
+        self.session.commit()
+        self.session.refresh(order)
+        return order
 
     async def cancel_order(self, order_id: int) -> None:
-        """
-        Cancel a pending order.
+        order = self.session.get(Order, order_id)
+        if not order:
+            raise ValueError("Order not found")
+        if order.status != OrderStatus.PENDING:
+            raise ValueError("Only pending orders can be cancelled")
 
-        Responsibilities:
-        - mark order cancelled
-        - remove from in-memory orderbook
+        order.status = OrderStatus.CANCELLED
+        self.session.add(order)
+        self.session.commit()
 
-        Parameters:
-        - order_id: Order identifier
-        """
-        ...
-
-    async def get_orders(self, portfolio_id: int, status: Optional[str] = None) -> List[Order]:
-        """
-        Fetch portfolio orders.
-
-        Parameters:
-        - portfolio_id: Portfolio identifier
-        - status: Optional status filter
-
-        Returns:
-        - List of orders
-        """
-        ...
+    async def get_orders(
+        self, portfolio_id: int, status: Optional[str] = None
+    ) -> List[Order]:
+        if status:
+            statement = (
+                select(Order)
+                .where(Order.portfolio_id == portfolio_id, Order.status == status)
+                .order_by(Order.created_at.desc())
+            )
+        else:
+            statement = (
+                select(Order)
+                .where(Order.portfolio_id == portfolio_id)
+                .order_by(Order.created_at.desc())
+            )
+        return list(self.session.exec(statement).all())
 
     async def get_order(self, order_id: int) -> Optional[Order]:
-        """
-        Fetch a single order.
-
-        Parameters:
-        - order_id: Order identifier
-
-        Returns:
-        - Order if found
-        """
-        ...
+        return self.session.get(Order, order_id)
 
     async def get_pending_orders(self, portfolio_id: int) -> List[Order]:
-        """
-        Fetch all pending orders
-        for a portfolio.
-
-        Parameters:
-        - portfolio_id: Portfolio identifier
-
-        Returns:
-        - List of pending orders
-        """
-        ...
+        return await self.get_orders(portfolio_id, status=OrderStatus.PENDING.value)
 
     async def get_executed_orders(self, portfolio_id: int) -> List[Order]:
-        """
-        Fetch all executed orders
-        for a portfolio.
-
-        Parameters:
-        - portfolio_id: Portfolio identifier
-
-        Returns:
-        - List of executed orders
-        """
-        ...
+        return await self.get_orders(portfolio_id, status=OrderStatus.EXECUTED.value)
 
     async def update_portfolio_metrics(self, portfolio_id: int) -> None:
-        """
-        Recalculate and update portfolio metrics.
+        portfolio = self.session.get(Portfolio, portfolio_id)
+        if not portfolio:
+            return
 
-        Includes:
-        - available cash
-        - invested cash
-        - total pnl
+        invested = await self.get_invested_cash(portfolio_id)
+        portfolio.invested_cash = invested
 
-        Parameters:
-        - portfolio_id: Portfolio identifier
-        """
-        ...
+        pnl_data = await self.calculate_unrealized_pnl(portfolio_id)
+
+        self.session.add(portfolio)
+        self.session.commit()

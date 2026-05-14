@@ -1,0 +1,50 @@
+{% extends "dashboard/base.html" %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'portfolio_list' %}">Portfolios</a></li>
+        {% if portfolio %}
+        <li class="breadcrumb-item"><a href="{% url 'portfolio_detail' portfolio.id %}">{{ portfolio.name }}</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active">Create</li>
+        {% endif %}
+    </ol>
+</nav>
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">{% if portfolio %}Edit Portfolio{% else %}Create Portfolio{% endif %}</div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Portfolio Name</label>
+                        <input type="text" name="name" class="form-control" required
+                               value="{% if portfolio %}{{ portfolio.name }}{% elif form_data %}{{ form_data.name }}{% endif %}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" class="form-control" rows="3">{% if portfolio %}{{ portfolio.description }}{% elif form_data %}{{ form_data.description }}{% endif %}</textarea>
+                    </div>
+                    {% if not portfolio %}
+                    <div class="mb-3">
+                        <label class="form-label">Initial Available Cash ($)</label>
+                        <input type="number" name="available_cash" class="form-control" step="0.00001"
+                               value="{% if form_data %}{{ form_data.available_cash }}{% else %}0{% endif %}">
+                    </div>
+                    {% endif %}
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-dark">
+                            {% if portfolio %}Save Changes{% else %}Create Portfolio{% endif %}
+                        </button>
+                        <a href="{% url 'portfolio_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

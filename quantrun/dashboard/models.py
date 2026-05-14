@@ -28,7 +28,7 @@ class Order(models.Model):
     symbol = models.CharField(max_length=30)
     side = models.CharField(max_length=10, choices=OrderSide.choices)
     quantity = models.DecimalField(max_digits=15,decimal_places=5, default=Decimal('0.00000'))
-    limit_price = models.DecimalField( max_digits=15, decimal_places=5, default=Decimal('0.00000'))
+    limit_price = models.DecimalField( max_digits=15, decimal_places=5, null=True, blank=True)
     executed_price = models.DecimalField( max_digits=15,decimal_places=5, null=True,blank=True)
     target = models.DecimalField( max_digits=15, decimal_places=5, null=True, blank=True)
     stoploss = models.DecimalField( max_digits=15, decimal_places=5, null=True, blank=True )
