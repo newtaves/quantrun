@@ -1,0 +1,83 @@
+{% extends "dashboard/base.html" %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'portfolio_list' %}">Portfolios</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'portfolio_detail' portfolio.id %}">{{ portfolio.name }}</a></li>
+        <li class="breadcrumb-item active">New Order</li>
+    </ol>
+</nav>
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">New Order — {{ portfolio.name }}</div>
+            <div class="card-body">
+                <div class="mb-3 p-3 bg-light rounded">
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">Available Cash</span>
+                        <span class="fw-bold">${{ portfolio.available_cash|floatformat:2 }}</span>
+                    </div>
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="mb-3">
+                        <label class="form-label">Symbol</label>
+                        <input type="text" name="symbol" class="form-control" placeholder="e.g. BTCUSDT" required
+                               value="{% if form_data %}{{ form_data.symbol }}{% endif %}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Side</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="side" value="BUY" id="side_buy"
+                                       {% if not form_data or form_data.side == 'BUY' %}checked{% endif %}>
+                                <label class="form-check-label" for="side_buy">Buy</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="side" value="SELL" id="side_sell"
+                                       {% if form_data.side == 'SELL' %}checked{% endif %}>
+                                <label class="form-check-label" for="side_sell">Sell</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Quantity</label>
+                        <input type="number" name="quantity" class="form-control" step="0.00001" min="0.00001" required
+                               value="{% if form_data %}{{ form_data.quantity }}{% endif %}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Limit Price (leave empty for market order)</label>
+                        <input type="number" name="limit_price" class="form-control" step="0.01" min="0"
+                               value="{% if form_data %}{{ form_data.limit_price }}{% endif %}">
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label class="form-label">Target</label>
+                            <input type="number" name="target" class="form-control" step="0.01" min="0"
+                                   value="{% if form_data %}{{ form_data.target }}{% endif %}">
+                        </div>
+                        <div class="col">
+                            <label class="form-label">Stoploss</label>
+                            <input type="number" name="stoploss" class="form-control" step="0.01" min="0"
+                                   value="{% if form_data %}{{ form_data.stoploss }}{% endif %}">
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-dark flex-grow-1">Place Order</button>
+                        <a href="{% url 'portfolio_detail' portfolio.id %}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
