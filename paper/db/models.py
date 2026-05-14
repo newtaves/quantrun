@@ -28,7 +28,7 @@ class Order(SQLModel, table=True):
     target: Optional[Decimal] = Field(default=None)
     stoploss: Optional[Decimal] = Field(default=None)
     status: OrderStatus = Field(default=OrderStatus.PENDING, index=True)
-    created_at: datetime = Field(default_factory=datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     executed_at: Optional[datetime] = Field(default=None)
     portfolio_id: int = Field(foreign_key="dashboard_portfolio.id", index=True)
 
@@ -42,7 +42,7 @@ class Portfolio(SQLModel, table=True):
     available_cash: Decimal = Field(default=Decimal("0"))
     invested_cash: Decimal = Field(default=Decimal("0"))
     total_pnl: Decimal = Field(default=Decimal("0"))
-    created_at: datetime = Field(default_factory=datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class Position(SQLModel, table=True):
@@ -57,4 +57,4 @@ class Position(SQLModel, table=True):
     unrealized_pnl: Decimal = Field(default=Decimal("0"))
     target: Optional[Decimal] = Field(default=None)
     stoploss: Optional[Decimal] = Field(default=None)
-    opened_at: datetime = Field(default_factory=datetime.now(UTC))
+    opened_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

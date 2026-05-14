@@ -19,8 +19,8 @@ class OrderStatus(models.TextChoices):
 
 
 class OrderSide(models.TextChoices):
-    BUY = "BUY", "Buy"
-    SELL = "SELL", "Sell"
+    BUY = "BUY"
+    SELL = "SELL"
 
 
 class Order(models.Model):

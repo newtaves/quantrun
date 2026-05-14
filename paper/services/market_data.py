@@ -7,7 +7,7 @@ import httpx
 from typing import Any, Dict, List, Optional, Set
 
 import websockets
-from websockets.exceptions import ConnectionClosed\
+from websockets.exceptions import ConnectionClosed
 
 
 class MarketDataStreamer:
@@ -17,6 +17,7 @@ class MarketDataStreamer:
     DEFAULT_SYMBOLS = ["BTCUSDT"]#, "ETHUSDT", "BNBUSDT"]
 
     def __init__(self) -> None:
+        self.shutdown = False
         self._market_prices: Dict[str, float] = {}
         self._lock = threading.Lock()
         self._active_streams: Set[str] = set()
@@ -87,10 +88,16 @@ class MarketDataStreamer:
         finally:
             if self._ws_connection is connection:
                 self._ws_connection = None
-            if self._active_streams:
-                await asyncio.sleep(5)
-                await self._ensure_connection()
-                await self._resubscribe_active_streams()
+            try:
+                loop = asyncio.get_running_loop()
+                if loop.is_running() and self._active_streams and not self.shutdown:
+                    logging.info("Attempting to reconnect...")
+                    await asyncio.sleep(5)
+                    await self._ensure_connection()
+                    await self._resubscribe_active_streams()
+            except RuntimeError:
+                # This handles the "no running event loop" error during shutdown
+                logging.info("Event loop closed; stopping reconnection attempts.")
 
     def _process_message(self, data: dict) -> None:
         """Process a single websocket payload into a market price update."""
@@ -198,23 +205,20 @@ class MarketDataStreamer:
         normalized = symbol.strip().upper()
         if not normalized:
             return None
-
-        # Use an AsyncClient for non-blocking I/O
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(f"https://api.binance.com/api/v3/ticker/price?symbol={normalized}")
-            
-        if resp.status_code == 200:
-            data = resp.json()
-            price = float(data.get('price'))
-            self.set_market_price(normalized, price)
-            await self._subscribe_symbols([normalized])
-            return price
-
         current_price = self._get_cached_price(normalized)
-        await self._subscribe_symbols([normalized])
-        if current_price is not None:
+        if current_price:
             return current_price
-        return self._get_cached_price(normalized)
+        else:
+            # Use an AsyncClient for non-blocking I/O
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"https://api.binance.com/api/v3/ticker/price?symbol={normalized}")
+                
+            if resp.status_code == 200:
+                data = resp.json()
+                price = float(data.get('price'))
+                self.set_market_price(normalized, price)
+                await self._subscribe_symbols([normalized])
+                return price
 
     def get_all_market_prices(self) -> Dict[str, float]:
         """Return a snapshot of all current market prices."""
