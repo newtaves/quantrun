@@ -4,7 +4,7 @@ import json
 import logging
 import threading
 import httpx
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 import websockets
 from websockets.exceptions import ConnectionClosed
@@ -26,6 +26,9 @@ class MarketDataStreamer:
         self._send_lock = asyncio.Lock()
         self._subscription_lock = asyncio.Lock()
         self._message_id = itertools.count(1)
+        # Callbacks invoked with {symbol: price} on every price update.
+        # Register via register_price_callback() to avoid circular imports.
+        self._price_callbacks: List[Callable[[Dict[str, float]], None]] = []
 
     def _stream_name(self, symbol: str) -> str:
         """Return the websocket stream name for a symbol."""
@@ -119,6 +122,13 @@ class MarketDataStreamer:
         self.set_market_price(symbol, price)
         logging.info(f"Updated market price: {symbol}={price}")
 
+        # Fire all registered callbacks (e.g. execution engine order matching)
+        for callback in self._price_callbacks:
+            try:
+                callback({symbol: price})
+            except Exception as exc:
+                logging.error(f"Price callback error: {exc}")
+
     async def _resubscribe_active_streams(self) -> None:
         """Resubscribe all currently active streams after reconnect."""
         if not self._active_streams:
@@ -177,6 +187,24 @@ class MarketDataStreamer:
     def get_all_subscriptions(self) -> List[str]:
         """Return the currently subscribed symbol list."""
         return sorted(self._active_streams)
+
+    def register_price_callback(
+        self, callback: Callable[[Dict[str, float]], None]
+    ) -> None:
+        """
+        Register a function to be called on every price update.
+
+        The callback receives a dict of {symbol: price} for the updated symbol.
+        Use this to hook the execution engine without creating circular imports:
+
+            market_data_streamer.register_price_callback(
+                order_executor.check_on_price_update
+            )
+
+        Parameters:
+        - callback: Any callable accepting Dict[str, float].
+        """
+        self._price_callbacks.append(callback)
 
     def set_market_price(self, symbol: str, price: float) -> None:
         """Store the latest market price for a symbol in the shared cache."""

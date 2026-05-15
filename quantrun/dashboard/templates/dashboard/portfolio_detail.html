@@ -82,7 +82,7 @@
                                 <td class="fw-semibold">{{ pos.symbol }}</td>
                                 <td><span class="badge {% if pos.side == 'BUY' %}badge-side-buy{% else %}badge-side-sell{% endif %}">{{ pos.side }}</span></td>
                                 <td>{{ pos.quantity|floatformat:4 }}</td>
-                                <td>${{ pos.average_price|floatformat:2 }}</td>
+                                <td>${{ pos.entry_price|floatformat:2 }}</td>
                                 <td>${{ pos.current_price|floatformat:2 }}</td>
                                 <td class="fw-semibold {% if pos.unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
                                     ${{ pos.unrealized_pnl|floatformat:2 }}

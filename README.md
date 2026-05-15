@@ -52,6 +52,7 @@ in future django app will be modified to store the algorithms to automatically t
 - [SqlModel](https://sqlmodel.tiangolo.com/tutorial/)
 - [UV download link](https://docs.astral.sh/uv/getting-started/installation/)
 - [Postman](https://www.postman.com/downloads/) (For testing API)
+- [API Documentation](docs/API.md)
 
 ## AI Use Policy
 You can use AI as much as you want. But make sure that you know what AI is changing. You should be the one who make decisions.

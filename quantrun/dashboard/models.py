@@ -8,9 +8,10 @@ class Portfolio(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(max_length=20000, default="description")
     available_cash = models.DecimalField(max_digits=15, decimal_places=5, default=Decimal('0.00000'))
-    invested_cash = models.DecimalField( max_digits=15,decimal_places=5, default=Decimal('0.00000'))
-    total_pnl = models.DecimalField( max_digits=15, decimal_places=5, default=Decimal('0.00000'))
+    invested_cash = models.DecimalField(max_digits=15, decimal_places=5, default=Decimal('0.00000'))
+    total_pnl = models.DecimalField(max_digits=15, decimal_places=5, default=Decimal('0.00000'))
     created_at = models.DateTimeField(auto_now_add=True)
+
 
 class OrderStatus(models.TextChoices):
     PENDING = "PENDING", "Pending"
@@ -19,31 +20,53 @@ class OrderStatus(models.TextChoices):
 
 
 class OrderSide(models.TextChoices):
-    BUY = "BUY"
-    SELL = "SELL"
+    BUY = "BUY", "Buy"
+    SELL = "SELL", "Sell"
+
+
+class ExitReason(models.TextChoices):
+    STOPLOSS = "STOPLOSS", "Stoploss"
+    TARGET = "TARGET", "Target"
+    MANUAL = "MANUAL", "Manual"
 
 
 class Order(models.Model):
     portfolio = models.ForeignKey(Portfolio, on_delete=models.CASCADE, related_name="orders")
     symbol = models.CharField(max_length=30)
     side = models.CharField(max_length=10, choices=OrderSide.choices)
-    quantity = models.DecimalField(max_digits=15,decimal_places=5, default=Decimal('0.00000'))
-    limit_price = models.DecimalField( max_digits=15, decimal_places=5, null=True, blank=True)
-    executed_price = models.DecimalField( max_digits=15,decimal_places=5, null=True,blank=True)
-    target = models.DecimalField( max_digits=15, decimal_places=5, null=True, blank=True)
-    stoploss = models.DecimalField( max_digits=15, decimal_places=5, null=True, blank=True )
-    status = models.CharField( max_length=20, choices=OrderStatus.choices, default=OrderStatus.PENDING)
+    quantity = models.DecimalField(max_digits=15, decimal_places=5, default=Decimal('0.00000'))
+    limit_price = models.DecimalField(max_digits=15, decimal_places=5, null=True, blank=True)
+    executed_price = models.DecimalField(max_digits=15, decimal_places=5, null=True, blank=True)
+    target = models.DecimalField(max_digits=15, decimal_places=5, null=True, blank=True)
+    stoploss = models.DecimalField(max_digits=15, decimal_places=5, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=OrderStatus.choices, default=OrderStatus.PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
     executed_at = models.DateTimeField(null=True, blank=True)
 
+
 class Position(models.Model):
     portfolio = models.ForeignKey(Portfolio, on_delete=models.CASCADE, related_name="positions")
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="positions", null=True, blank=True)
     symbol = models.CharField(max_length=30)
     side = models.CharField(max_length=10, choices=OrderSide.choices)
-    quantity = models.DecimalField(max_digits=15,decimal_places=5, default=Decimal('0.00000'))
-    average_price = models.DecimalField(max_digits=15, decimal_places=5)
-    current_price = models.DecimalField(max_digits=15, decimal_places=5, default=Decimal(0.00000))
-    unrealized_pnl = models.DecimalField(max_digits=15, decimal_places=5, default=Decimal(0.00000))
+    quantity = models.DecimalField(max_digits=15, decimal_places=5, default=Decimal('0.00000'))
+    entry_price = models.DecimalField(max_digits=15, decimal_places=5)
     target = models.DecimalField(max_digits=15, decimal_places=5, null=True, blank=True)
     stoploss = models.DecimalField(max_digits=15, decimal_places=5, null=True, blank=True)
     opened_at = models.DateTimeField(auto_now_add=True)
+
+
+class PositionHistory(models.Model):
+    portfolio = models.ForeignKey(Portfolio, on_delete=models.CASCADE, related_name="position_history")
+    order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True)
+    symbol = models.CharField(max_length=30)
+    side = models.CharField(max_length=10, choices=OrderSide.choices)
+    quantity = models.DecimalField(max_digits=15, decimal_places=5)
+    entry_price = models.DecimalField(max_digits=15, decimal_places=5)
+    exit_price = models.DecimalField(max_digits=15, decimal_places=5)
+    realized_pnl = models.DecimalField(max_digits=15, decimal_places=5)
+    target = models.DecimalField(max_digits=15, decimal_places=5, null=True, blank=True)
+    stoploss = models.DecimalField(max_digits=15, decimal_places=5, null=True, blank=True)
+    exit_reason = models.CharField(max_length=20, choices=ExitReason.choices)
+    opened_at = models.DateTimeField()
+    closed_at = models.DateTimeField(auto_now_add=True)
