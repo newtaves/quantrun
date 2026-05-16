@@ -11,4 +11,7 @@ urlpatterns = [
     path("<int:portfolio_id>/delete/", views.portfolio_delete, name="portfolio_delete"),
     path("<int:portfolio_id>/order/new/", views.order_create, name="order_create"),
     path("<int:portfolio_id>/order/<int:order_id>/cancel/", views.order_cancel, name="order_cancel"),
+    path("tokens/", views.token_list, name="token_list"),
+    path("tokens/generate/", views.token_generate, name="token_generate"),
+    path("tokens/<int:token_id>/revoke/", views.token_revoke, name="token_revoke"),
 ]
