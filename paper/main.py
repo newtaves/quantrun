@@ -11,6 +11,7 @@ from paper.db import get_db
 from paper.services.market_data import DEFAULT_SYMBOLS, market_data_streamer
 from paper.services.portfolio_manager import PortfolioManager
 from paper.services.execution_engine import order_executor
+from paper.auth import get_current_user
 from sqlmodel import Session, select
 from decimal import Decimal
 
@@ -83,9 +84,10 @@ async def symbol_price(symbol: str):
 # ═══════════════════════════ Portfolio CRUD ═══════════════════════════════════
 
 @app.post("/portfolio")
-async def create_portfolio(data: Portfolio, session: Session = Depends(get_db)):
+async def create_portfolio(data: Portfolio, session: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     manager = PortfolioManager(session)
     try:
+        data.user_id = current_user["user_id"]
         portfolio = await manager.create_portfolio(data)
         return {"message": "Portfolio created successfully", "portfolio": portfolio}
     except ValueError as e:
@@ -93,17 +95,19 @@ async def create_portfolio(data: Portfolio, session: Session = Depends(get_db)):
 
 
 @app.get("/portfolio")
-def list_portfolios(user_id: int, session: Session = Depends(get_db)):
-    statement = select(Portfolio).where(Portfolio.user_id == user_id)
+def list_portfolios(session: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    statement = select(Portfolio).where(Portfolio.user_id == current_user["user_id"])
     portfolios = list(session.exec(statement).all())
     return {"portfolios": portfolios}
 
 
 @app.get("/portfolio/{portfolio_id}")
-def get_portfolio(portfolio_id: int, session: Session = Depends(get_db)):
+def get_portfolio(portfolio_id: int, session: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     portfolio = session.get(Portfolio, portfolio_id)
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
+    if portfolio.user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     return {"portfolio": portfolio}
 
 
@@ -113,10 +117,13 @@ async def update_portfolio(
     name: Optional[str] = None,
     description: Optional[str] = None,
     session: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     portfolio = session.get(Portfolio, portfolio_id)
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
+    if portfolio.user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     if name is not None:
         portfolio.name = name
     if description is not None:
@@ -128,9 +135,14 @@ async def update_portfolio(
 
 
 @app.delete("/portfolio/{portfolio_id}")
-async def delete_portfolio(portfolio_id: int, session: Session = Depends(get_db)):
+async def delete_portfolio(portfolio_id: int, session: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     manager = PortfolioManager(session)
     try:
+        portfolio = session.get(Portfolio, portfolio_id)
+        if not portfolio:
+            raise ValueError("Portfolio not found")
+        if portfolio.user_id != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
         await manager.delete_portfolio(portfolio_id)
         return {"message": "Portfolio deleted"}
     except ValueError as e:
@@ -140,24 +152,30 @@ async def delete_portfolio(portfolio_id: int, session: Session = Depends(get_db)
 # ═══════════════════════════ Portfolio PnL & Analytics ═══════════════════════
 
 @app.get("/portfolio/{portfolio_id}/pnl")
-async def portfolio_pnl(portfolio_id: int, session: Session = Depends(get_db)):
+async def portfolio_pnl(portfolio_id: int, session: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    portfolio = session.get(Portfolio, portfolio_id)
+    if not portfolio or portfolio.user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     manager = PortfolioManager(session)
     return await manager.generate_pnl_report(portfolio_id)
 
 
 @app.get("/portfolio/{portfolio_id}/unrealized-pnl")
-async def portfolio_unrealized_pnl(portfolio_id: int, session: Session = Depends(get_db)):
+async def portfolio_unrealized_pnl(portfolio_id: int, session: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    portfolio = session.get(Portfolio, portfolio_id)
+    if not portfolio or portfolio.user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     manager = PortfolioManager(session)
     result = await manager.calculate_unrealized_pnl(portfolio_id)
     return {"unrealized_pnl": float(result["total"]), "positions": result["positions"]}
 
 
 @app.get("/portfolio/{portfolio_id}/summary")
-async def portfolio_summary(portfolio_id: int, session: Session = Depends(get_db)):
-    manager = PortfolioManager(session)
+async def portfolio_summary(portfolio_id: int, session: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     portfolio = session.get(Portfolio, portfolio_id)
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
+    if not portfolio or portfolio.user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    manager = PortfolioManager(session)
     pnl = await manager.calculate_total_pnl(portfolio_id)
     positions = await manager.get_positions(portfolio_id)
     return {
@@ -176,11 +194,14 @@ async def portfolio_summary(portfolio_id: int, session: Session = Depends(get_db
 # ═══════════════════════════ Positions ═══════════════════════════════════════
 
 @app.get("/portfolio/{portfolio_id}/positions")
-async def portfolio_positions(portfolio_id: int, session: Session = Depends(get_db)):
+async def portfolio_positions(portfolio_id: int, session: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     """
     Returns all open positions with on-the-fly current_price and unrealized_pnl.
     These are NOT stored in the database — calculated fresh on every call.
     """
+    portfolio = session.get(Portfolio, portfolio_id)
+    if not portfolio or portfolio.user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     manager = PortfolioManager(session)
     result = await manager.calculate_unrealized_pnl(portfolio_id)
     return {"positions": result["positions"]}
@@ -253,11 +274,14 @@ async def position_history(portfolio_id: int, session: Session = Depends(get_db)
 # ═══════════════════════════ Orders ══════════════════════════════════════════
 
 @app.post("/order")
-async def create_order(order: Order, session: Session = Depends(get_db)):
+async def create_order(order: Order, session: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     """
     Place a new order. After saving as PENDING, adds it to the in-memory
     execution engine. Market orders will be filled on the next price tick.
     """
+    portfolio = session.get(Portfolio, order.portfolio_id)
+    if not portfolio or portfolio.user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     manager = PortfolioManager(session)
     try:
         created = await manager.place_order(order)
@@ -269,11 +293,14 @@ async def create_order(order: Order, session: Session = Depends(get_db)):
 
 
 @app.get("/order/{order_id}")
-def read_order(order_id: int, session: Session = Depends(get_db)):
+def read_order(order_id: int, session: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     statement = select(Order).where(Order.id == order_id)
     order = session.exec(statement).first()
     if not order:
         raise HTTPException(status_code=404, detail=f"Order with ID {order_id} not found")
+    portfolio = session.get(Portfolio, order.portfolio_id)
+    if not portfolio or portfolio.user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     return {"order": order}
 
 
@@ -284,19 +311,29 @@ async def update_order(
     target: Optional[Decimal] = None,
     stoploss: Optional[Decimal] = None,
     session: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     manager = PortfolioManager(session)
     try:
         order = await manager.modify_order(order_id, limit_price, target, stoploss)
+        portfolio = session.get(Portfolio, order.portfolio_id)
+        if not portfolio or portfolio.user_id != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
         return {"message": "Order updated", "order": order}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.delete("/order/{order_id}")
-async def cancel_order(order_id: int, session: Session = Depends(get_db)):
+async def cancel_order(order_id: int, session: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     manager = PortfolioManager(session)
     try:
+        order = session.get(Order, order_id)
+        if not order:
+            raise ValueError("Order not found")
+        portfolio = session.get(Portfolio, order.portfolio_id)
+        if not portfolio or portfolio.user_id != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
         await manager.cancel_order(order_id)
         return {"message": "Order cancelled"}
     except ValueError as e:
@@ -308,7 +345,11 @@ async def portfolio_orders(
     portfolio_id: int,
     status: Optional[str] = None,
     session: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
+    portfolio = session.get(Portfolio, portfolio_id)
+    if not portfolio or portfolio.user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     manager = PortfolioManager(session)
     orders = await manager.get_orders(portfolio_id, status)
     return {"orders": orders}

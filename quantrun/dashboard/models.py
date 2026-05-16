@@ -3,6 +3,17 @@ from decimal import Decimal
 from django.contrib.auth.models import User
 
 
+class APIToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="api_tokens")
+    token = models.CharField(max_length=500, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"Token for {self.user.username} (expires: {self.expires_at})"
+
+
 class Portfolio(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="portfolios")
     name = models.CharField(max_length=100)
