@@ -123,3 +123,7 @@ LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
 FASTAPI_BASE_URL = os.getenv("FASTAPI_BASE_URL", "http://127.0.0.1:8000")
+
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "quant-run-secret-jwt-key-change-in-production-2026-secure")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_DAYS = 30
