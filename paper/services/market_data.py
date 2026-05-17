@@ -119,7 +119,13 @@ class MarketDataStreamer:
             logging.warning(f"Unable to parse price for {symbol}: {ask_price}, {bid_price}")
             return
 
+        # Skip processing if price hasn't changed
+        old_price = self._get_cached_price(symbol.upper())
+        if old_price == price:
+            return
+
         self.set_market_price(symbol, price)
+        # Optional: reduce logging noise by only logging actual changes
         logging.info(f"Updated market price: {symbol}={price}")
 
         # Fire all registered callbacks (e.g. execution engine order matching)

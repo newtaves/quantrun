@@ -1,5 +1,6 @@
 from decimal import Decimal
 from typing import Dict, List, Optional
+import asyncio
 
 from sqlmodel import Session, select
 
@@ -22,49 +23,58 @@ class PortfolioManager:
     # ─────────────────────────── Portfolio CRUD ──────────────────────────────
 
     async def create_portfolio(self, data: Portfolio) -> Portfolio:
-        self.session.add(data)
-        self.session.commit()
-        self.session.refresh(data)
-        return data
+        def _db():
+            self.session.add(data)
+            self.session.commit()
+            self.session.refresh(data)
+            return data
+        return await asyncio.to_thread(_db)
 
     async def get_portfolios(self, user_id: int) -> List[Portfolio]:
-        statement = select(Portfolio).where(Portfolio.user_id == user_id)
-        return list(self.session.exec(statement).all())
+        def _db():
+            statement = select(Portfolio).where(Portfolio.user_id == user_id)
+            return list(self.session.exec(statement).all())
+        return await asyncio.to_thread(_db)
 
     async def get_portfolio(self, portfolio_id: int) -> Optional[Portfolio]:
-        return self.session.get(Portfolio, portfolio_id)
+        return await asyncio.to_thread(self.session.get, Portfolio, portfolio_id)
 
     async def delete_portfolio(self, portfolio_id: int) -> None:
-        portfolio = self.session.get(Portfolio, portfolio_id)
-        if not portfolio:
-            return
+        def _db():
+            portfolio = self.session.get(Portfolio, portfolio_id)
+            if not portfolio:
+                return
 
-        positions = self.session.exec(
-            select(Position).where(Position.portfolio_id == portfolio_id)
-        ).all()
-        if positions:
-            raise ValueError("Cannot delete portfolio with active positions")
+            positions = self.session.exec(
+                select(Position).where(Position.portfolio_id == portfolio_id)
+            ).all()
+            if positions:
+                raise ValueError("Cannot delete portfolio with active positions")
 
-        pending_orders = self.session.exec(
-            select(Order).where(
-                Order.portfolio_id == portfolio_id,
-                Order.status == OrderStatus.PENDING,
-            )
-        ).all()
-        if pending_orders:
-            raise ValueError("Cannot delete portfolio with pending orders")
+            pending_orders = self.session.exec(
+                select(Order).where(
+                    Order.portfolio_id == portfolio_id,
+                    Order.status == OrderStatus.PENDING,
+                )
+            ).all()
+            if pending_orders:
+                raise ValueError("Cannot delete portfolio with pending orders")
 
-        self.session.delete(portfolio)
-        self.session.commit()
+            self.session.delete(portfolio)
+            self.session.commit()
+            
+        await asyncio.to_thread(_db)
 
     # ─────────────────────────── Positions ───────────────────────────────────
 
     async def get_positions(self, portfolio_id: int) -> List[Position]:
-        statement = select(Position).where(Position.portfolio_id == portfolio_id)
-        return list(self.session.exec(statement).all())
+        def _db():
+            statement = select(Position).where(Position.portfolio_id == portfolio_id)
+            return list(self.session.exec(statement).all())
+        return await asyncio.to_thread(_db)
 
     async def get_position(self, position_id: int) -> Optional[Position]:
-        return self.session.get(Position, position_id)
+        return await asyncio.to_thread(self.session.get, Position, position_id)
 
     async def get_position_summary(self, portfolio_id: int) -> dict:
         """Return a lightweight summary using in-memory executor state."""
@@ -86,7 +96,7 @@ class PortfolioManager:
         }
 
     async def get_available_cash(self, portfolio_id: int) -> Decimal:
-        portfolio = self.session.get(Portfolio, portfolio_id)
+        portfolio = await self.get_portfolio(portfolio_id)
         if not portfolio:
             return Decimal("0")
         return portfolio.available_cash
@@ -114,7 +124,7 @@ class PortfolioManager:
         """
         from paper.services.execution_engine import order_executor
 
-        portfolio = self.session.get(Portfolio, portfolio_id)
+        portfolio = await self.get_portfolio(portfolio_id)
         if not portfolio:
             return {"total": Decimal("0"), "positions": []}
 
@@ -128,14 +138,14 @@ class PortfolioManager:
         return {"total": round(total, 5), "positions": portfolio_pnl}
 
     async def calculate_realized_pnl(self, portfolio_id: int) -> Decimal:
-        portfolio = self.session.get(Portfolio, portfolio_id)
+        portfolio = await self.get_portfolio(portfolio_id)
         if not portfolio:
             return Decimal("0")
         return portfolio.total_pnl
 
     async def generate_pnl_report(self, portfolio_id: int) -> dict:
         total = await self.calculate_total_pnl(portfolio_id)
-        portfolio = self.session.get(Portfolio, portfolio_id)
+        portfolio = await self.get_portfolio(portfolio_id)
 
         return {
             "portfolio_id": portfolio_id,
@@ -157,7 +167,7 @@ class PortfolioManager:
         Cash availability is checked here to give fast feedback to the caller.
         Actual cash deduction happens at execution time in OrderExecutor.
         """
-        portfolio = self.session.get(Portfolio, order.portfolio_id)
+        portfolio = await self.get_portfolio(order.portfolio_id)
         if not portfolio:
             raise ValueError("Portfolio not found")
 
@@ -193,10 +203,13 @@ class PortfolioManager:
             )
 
         order.status = OrderStatus.PENDING
-        self.session.add(order)
-        self.session.commit()
-        self.session.refresh(order)
-        return order
+        def _db():
+            self.session.add(order)
+            self.session.commit()
+            self.session.refresh(order)
+            return order
+            
+        return await asyncio.to_thread(_db)
 
     async def modify_order(
         self,
@@ -211,7 +224,7 @@ class PortfolioManager:
         """
         from paper.services.execution_engine import order_executor
 
-        order = self.session.get(Order, order_id)
+        order = await self.get_order(order_id)
         if not order:
             raise ValueError("Order not found")
         if order.status != OrderStatus.PENDING:
@@ -224,9 +237,11 @@ class PortfolioManager:
         if stoploss is not None:
             order.stoploss = stoploss
 
-        self.session.add(order)
-        self.session.commit()
-        self.session.refresh(order)
+        def _db():
+            self.session.add(order)
+            self.session.commit()
+            self.session.refresh(order)
+        await asyncio.to_thread(_db)
 
         # Re-sort the in-memory orderbook entry with updated price
         mem_order = order_executor._order_registry.get(order_id)
@@ -249,15 +264,17 @@ class PortfolioManager:
         """Cancel a pending order in both DB and in-memory orderbook."""
         from paper.services.execution_engine import order_executor
 
-        order = self.session.get(Order, order_id)
+        order = await self.get_order(order_id)
         if not order:
             raise ValueError("Order not found")
         if order.status != OrderStatus.PENDING:
             raise ValueError("Only pending orders can be cancelled")
 
         order.status = OrderStatus.CANCELLED
-        self.session.add(order)
-        self.session.commit()
+        def _db():
+            self.session.add(order)
+            self.session.commit()
+        await asyncio.to_thread(_db)
 
         # Also remove from in-memory orderbook if present
         mem_order = order_executor._order_registry.pop(order_id, None)
@@ -278,7 +295,7 @@ class PortfolioManager:
         """
         from paper.services.execution_engine import order_executor
 
-        position = self.session.get(Position, position_id)
+        position = await self.get_position(position_id)
         if not position:
             raise ValueError(f"Position #{position_id} not found")
 
@@ -303,7 +320,7 @@ class PortfolioManager:
         """
         from paper.services.execution_engine import order_executor
 
-        position = self.session.get(Position, position_id)
+        position = await self.get_position(position_id)
         if not position:
             raise ValueError(f"Position #{position_id} not found")
 
@@ -312,9 +329,11 @@ class PortfolioManager:
         if stoploss is not None:
             position.stoploss = Decimal(str(stoploss))
 
-        self.session.add(position)
-        self.session.commit()
-        self.session.refresh(position)
+        def _db():
+            self.session.add(position)
+            self.session.commit()
+            self.session.refresh(position)
+        await asyncio.to_thread(_db)
 
         # Update in-memory registry
         order_executor.modify_position(
@@ -328,22 +347,24 @@ class PortfolioManager:
     async def get_orders(
         self, portfolio_id: int, status: Optional[str] = None
     ) -> List[Order]:
-        if status:
-            statement = (
-                select(Order)
-                .where(Order.portfolio_id == portfolio_id, Order.status == status)
-                .order_by(Order.created_at.desc())
-            )
-        else:
-            statement = (
-                select(Order)
-                .where(Order.portfolio_id == portfolio_id)
-                .order_by(Order.created_at.desc())
-            )
-        return list(self.session.exec(statement).all())
+        def _db():
+            if status:
+                statement = (
+                    select(Order)
+                    .where(Order.portfolio_id == portfolio_id, Order.status == status)
+                    .order_by(Order.created_at.desc())
+                )
+            else:
+                statement = (
+                    select(Order)
+                    .where(Order.portfolio_id == portfolio_id)
+                    .order_by(Order.created_at.desc())
+                )
+            return list(self.session.exec(statement).all())
+        return await asyncio.to_thread(_db)
 
     async def get_order(self, order_id: int) -> Optional[Order]:
-        return self.session.get(Order, order_id)
+        return await asyncio.to_thread(self.session.get, Order, order_id)
 
     async def get_pending_orders(self, portfolio_id: int) -> List[Order]:
         return await self.get_orders(portfolio_id, status=OrderStatus.PENDING.value)
@@ -353,19 +374,23 @@ class PortfolioManager:
 
     async def get_position_history(self, portfolio_id: int) -> List[PositionHistory]:
         """Return all closed trade records for a portfolio (analytics)."""
-        statement = (
-            select(PositionHistory)
-            .where(PositionHistory.portfolio_id == portfolio_id)
-            .order_by(PositionHistory.closed_at.desc())
-        )
-        return list(self.session.exec(statement).all())
+        def _db():
+            statement = (
+                select(PositionHistory)
+                .where(PositionHistory.portfolio_id == portfolio_id)
+                .order_by(PositionHistory.closed_at.desc())
+            )
+            return list(self.session.exec(statement).all())
+        return await asyncio.to_thread(_db)
 
     async def update_portfolio_metrics(self, portfolio_id: int) -> None:
-        portfolio = self.session.get(Portfolio, portfolio_id)
+        portfolio = await self.get_portfolio(portfolio_id)
         if not portfolio:
             return
 
         invested = await self.get_invested_cash(portfolio_id)
         portfolio.invested_cash = invested
-        self.session.add(portfolio)
-        self.session.commit()
+        def _db():
+            self.session.add(portfolio)
+            self.session.commit()
+        await asyncio.to_thread(_db)

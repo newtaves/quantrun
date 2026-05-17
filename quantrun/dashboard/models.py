@@ -57,8 +57,8 @@ class Order(models.Model):
 
 class Position(models.Model):
     portfolio = models.ForeignKey(Portfolio, on_delete=models.CASCADE, related_name="positions")
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="positions", null=True, blank=True)
-    symbol = models.CharField(max_length=30)
+    order_id = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="positions", null=True, blank=True)
+    symbol_id = models.CharField(max_length=30)
     side = models.CharField(max_length=10, choices=OrderSide.choices)
     quantity = models.DecimalField(max_digits=15, decimal_places=5, default=Decimal('0.00000'))
     entry_price = models.DecimalField(max_digits=15, decimal_places=5)
