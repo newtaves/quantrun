@@ -11,28 +11,23 @@ from jwt.exceptions import (
     DecodeError,
 )
 import os
-import sqlite3
-from pathlib import Path
+from sqlalchemy import text
+from sqlmodel import Session
+from paper.db import get_db
 
 ALGORITHM = "HS256"
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "quant-run-secret-jwt-key-change-in-production")
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "quantrun" / "db.sqlite3"
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "quant-run-secret-jwt-key-change-in-production-2026-secure")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
-def _is_token_revoked(token_str: str) -> bool:
+def _is_token_revoked(token_str: str, session: Session) -> bool:
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT is_active FROM dashboard_apitoken WHERE token = ? LIMIT 1",
-            (token_str,)
+        result = session.execute(
+            text("SELECT is_active FROM dashboard_apitoken WHERE token = :token LIMIT 1"),
+            {"token": token_str}
         )
-        row = cursor.fetchone()
-        conn.close()
+        row = result.first()
         if row is None:
             return True
         return not bool(row[0])
@@ -40,7 +35,7 @@ def _is_token_revoked(token_str: str) -> bool:
         return False
 
 
-def decode_token(token: str) -> dict:
+def decode_token(token: str, session: Session) -> dict:
     try:
         payload = jwt.decode(
             token,
@@ -61,14 +56,17 @@ def decode_token(token: str) -> dict:
     except InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    if _is_token_revoked(token):
+    if _is_token_revoked(token, session):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
 
     return payload
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
-    payload = decode_token(token)
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    session: Session = Depends(get_db),
+) -> dict:
+    payload = decode_token(token, session)
     user_id: Optional[int] = payload.get("user_id")
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")

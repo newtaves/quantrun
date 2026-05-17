@@ -275,23 +275,37 @@ class OrderExecutor:
         available = self._portfolio_cash.get(portfolio_id)
         if available is None:
             # First execution for this portfolio — prime the cache from DB
-            with self._get_session() as session:
-                portfolio = session.get(Portfolio, portfolio_id)
-                if not portfolio:
-                    logging.error(
-                        f"[Execution] Portfolio #{portfolio_id} not found "
-                        f"for order #{order.id}. Rejecting."
-                    )
-                    return None
-                available = portfolio.available_cash
-                self._portfolio_cash[portfolio_id] = available
+            def _fetch_cash():
+                with self._get_session() as session:
+                    portfolio = session.get(Portfolio, portfolio_id)
+                    return portfolio.available_cash if portfolio else None
+                    
+            available = await asyncio.to_thread(_fetch_cash)
+            if available is None:
+                logging.error(
+                    f"[Execution] Portfolio #{portfolio_id} not found "
+                    f"for order #{order.id}. Rejecting."
+                )
+                return None
+            self._portfolio_cash[portfolio_id] = available
 
         if available < cost:
             logging.warning(
                 f"[Execution] Insufficient cash for order #{order.id} "
                 f"({order.side.value} {order.quantity} {order.symbol} @ {execution_price}). "
-                f"Required: {cost:.4f}, Available: {available:.4f}. Skipping."
+                f"Required: {cost:.4f}, Available: {available:.4f}. Cancelling order."
             )
+            self.remove_order(order)
+            
+            def _cancel_db():
+                with self._get_session() as session:
+                    db_order = session.get(Order, order.id)
+                    if db_order and db_order.status == OrderStatus.PENDING:
+                        db_order.status = OrderStatus.CANCELLED
+                        session.add(db_order)
+                        session.commit()
+                        
+            await asyncio.to_thread(_cancel_db)
             return None
 
         # ── Deduct cash in-memory immediately ───────────────────────────────
@@ -330,26 +344,29 @@ class OrderExecutor:
             opened_at=now,
         )
 
-        with self._get_session() as session:
-            # 1. Mark order executed
-            db_order = session.get(Order, order.id)
-            if db_order:
-                db_order.status = OrderStatus.EXECUTED
-                db_order.executed_price = execution_price
-                db_order.executed_at = now
-                session.add(db_order)
+        def _db_save():
+            with self._get_session() as session:
+                # 1. Mark order executed
+                db_order = session.get(Order, order.id)
+                if db_order:
+                    db_order.status = OrderStatus.EXECUTED
+                    db_order.executed_price = execution_price
+                    db_order.executed_at = now
+                    session.add(db_order)
 
-            # 2. Update portfolio cash
-            portfolio = session.get(Portfolio, order.portfolio_id)
-            if portfolio:
-                portfolio.available_cash -= cost
-                portfolio.invested_cash += cost
-                session.add(portfolio)
+                # 2. Update portfolio cash
+                portfolio = session.get(Portfolio, order.portfolio_id)
+                if portfolio:
+                    portfolio.available_cash -= cost
+                    portfolio.invested_cash += cost
+                    session.add(portfolio)
 
-            # 3. Save position
-            session.add(position)
-            session.commit()
-            session.refresh(position)
+                # 3. Save position
+                session.add(position)
+                session.commit()
+                session.refresh(position)
+                
+        await asyncio.to_thread(_db_save)
 
         # Remove from orderbook AFTER successful DB write
         self.remove_order(order)
@@ -443,41 +460,44 @@ class OrderExecutor:
             self._portfolio_cash.get(portfolio_id, Decimal("0")) + cash_returned
         )
 
-        with self._get_session() as session:
-            # 1. Update portfolio
-            portfolio = session.get(Portfolio, portfolio_id)
-            if portfolio:
-                portfolio.available_cash += cash_returned
-                portfolio.invested_cash = max(
-                    Decimal("0"), portfolio.invested_cash - entry_cost
+        def _db_save():
+            with self._get_session() as session:
+                # 1. Update portfolio
+                portfolio = session.get(Portfolio, portfolio_id)
+                if portfolio:
+                    portfolio.available_cash += cash_returned
+                    portfolio.invested_cash = max(
+                        Decimal("0"), portfolio.invested_cash - entry_cost
+                    )
+                    portfolio.total_pnl += realized_pnl
+                    session.add(portfolio)
+
+                # 2. Archive to PositionHistory
+                history = PositionHistory(
+                    portfolio_id=position.portfolio_id,
+                    order_id=position.order_id,
+                    symbol=position.symbol,
+                    side=position.side,
+                    quantity=position.quantity,
+                    entry_price=position.entry_price,
+                    exit_price=exit_price,
+                    realized_pnl=realized_pnl,
+                    target=position.target,
+                    stoploss=position.stoploss,
+                    exit_reason=exit_reason,
+                    opened_at=position.opened_at,
+                    closed_at=datetime.now(UTC),
                 )
-                portfolio.total_pnl += realized_pnl
-                session.add(portfolio)
+                session.add(history)
 
-            # 2. Archive to PositionHistory
-            history = PositionHistory(
-                portfolio_id=position.portfolio_id,
-                order_id=position.order_id,
-                symbol=position.symbol,
-                side=position.side,
-                quantity=position.quantity,
-                entry_price=position.entry_price,
-                exit_price=exit_price,
-                realized_pnl=realized_pnl,
-                target=position.target,
-                stoploss=position.stoploss,
-                exit_reason=exit_reason,
-                opened_at=position.opened_at,
-                closed_at=datetime.now(UTC),
-            )
-            session.add(history)
+                # 3. Delete the active position row
+                db_position = session.get(Position, position.id)
+                if db_position:
+                    session.delete(db_position)
 
-            # 3. Delete the active position row
-            db_position = session.get(Position, position.id)
-            if db_position:
-                session.delete(db_position)
-
-            session.commit()
+                session.commit()
+                
+        await asyncio.to_thread(_db_save)
 
         # Remove from in-memory cache
         self._active_positions.pop(position.id, None)

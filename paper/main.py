@@ -69,7 +69,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ═══════════════════════════ Market Prices ════════════════════════════════════
 
 @app.get("/prices")
-def current_prices():
+async def current_prices():
     return market_data_streamer.get_all_market_prices()
 
 
@@ -358,7 +358,7 @@ async def portfolio_orders(
 # ═══════════════════════════ Execution Engine State (debug) ══════════════════
 
 @app.get("/engine/pending")
-def engine_pending_orders(symbol: Optional[str] = None):
+async def engine_pending_orders(symbol: Optional[str] = None):
     """Return current in-memory pending orders (for debugging)."""
     orders = order_executor.get_pending_orders(symbol)
     return {
@@ -378,7 +378,7 @@ def engine_pending_orders(symbol: Optional[str] = None):
 
 
 @app.get("/engine/positions")
-def engine_active_positions():
+async def engine_active_positions():
     """Return current in-memory active positions with live PnL (for debugging)."""
     pnl_data = order_executor.calculate_unrealized_pnl()
     return {"active_positions": pnl_data}
