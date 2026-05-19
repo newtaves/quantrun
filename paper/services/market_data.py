@@ -14,7 +14,10 @@ class MarketDataStreamer:
     """Manage Binance market-price websocket subscriptions and shared price cache."""
 
     WS_URL = "wss://stream.binance.com:9443/ws"
-    DEFAULT_SYMBOLS = ["BTCUSDT"]#, "ETHUSDT", "BNBUSDT"]
+    DEFAULT_SYMBOLS = [
+        "BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", 
+        "DOTUSDT", "LTCUSDT", "DOGEUSDT", "XRPUSDT"
+    ]
 
     def __init__(self) -> None:
         self.shutdown = False

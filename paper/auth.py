@@ -15,7 +15,7 @@ import sqlite3
 from pathlib import Path
 
 ALGORITHM = "HS256"
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "quant-run-secret-jwt-key-change-in-production")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "quant-run-secret-jwt-key-change-in-production-2026-secure")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "quantrun" / "db.sqlite3"

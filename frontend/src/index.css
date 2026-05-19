@@ -1,0 +1,271 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Default Flat Dark Mode (Absolute Black) */
+  --bg-color: #000000;
+  --panel-bg: #0a0a0a;
+  --panel-hover: #141414;
+  --panel-border: #222222;
+  --panel-border-active: #444444;
+  
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #576574;
+  
+  --primary: #ffffff;
+  --secondary: #2f3542;
+  
+  /* High contrast trading statuses */
+  --success: #00ff00; /* Neon/Flat Green */
+  --danger: #ff3838;  /* Neon/Flat Red */
+  --warning: #ffb142;
+}
+
+body.light-mode {
+  /* Flat Light Mode (Absolute White) */
+  --bg-color: #ffffff;
+  --panel-bg: #f8fafc;
+  --panel-hover: #f1f5f9;
+  --panel-border: #dddddd;
+  --panel-border-active: #888888;
+  
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  
+  --primary: #0f172a;
+  --secondary: #e2e8f0;
+  
+  --success: #00aa00; /* Rich Forest Green */
+  --danger: #d9534f;  /* Bold Soft Red */
+  --warning: #f0ad4e;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  border-radius: 0px !important; /* Force complete sharp edges */
+}
+
+body {
+  background: var(--bg-color);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+h1, h2, h3, h4, h5, h6, .mono-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Custom Sleek Scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-color);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--panel-border);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Flat Panel Styles */
+.glass-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.glass-panel:hover {
+  background: var(--panel-hover);
+  border-color: var(--panel-border-active);
+}
+
+.glow-border {
+  border: 1px solid var(--panel-border);
+}
+.glow-border:focus-within {
+  border-color: var(--text-primary) !important;
+  outline: none;
+  box-shadow: none !important;
+}
+
+/* Custom Bloomberg/Terminal Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+  font-size: 0.85rem;
+  padding: 8px 16px;
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.1s ease;
+}
+
+.btn:hover {
+  border-color: var(--text-primary);
+  background: var(--panel-hover);
+}
+
+.btn-primary {
+  background: var(--text-primary);
+  color: var(--bg-color);
+  border-color: var(--text-primary);
+  font-weight: 700;
+}
+.btn-primary:hover {
+  background: var(--text-secondary);
+  border-color: var(--text-secondary);
+}
+
+.btn-secondary {
+  background: var(--bg-color);
+  color: var(--text-primary);
+  border: 1px solid var(--panel-border);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+.btn-danger:hover {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+/* Trading badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.badge-buy {
+  background: rgba(0, 255, 0, 0.08);
+  color: var(--success);
+  border-color: var(--success);
+}
+body.light-mode .badge-buy {
+  background: rgba(0, 170, 0, 0.06);
+}
+.badge-sell {
+  background: rgba(255, 56, 56, 0.08);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+body.light-mode .badge-sell {
+  background: rgba(217, 83, 79, 0.06);
+}
+
+/* Price ticker flash updates */
+@keyframes flashGreen {
+  0% { background-color: rgba(0, 255, 0, 0.2); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flashRed {
+  0% { background-color: rgba(255, 56, 56, 0.2); }
+  100% { background-color: transparent; }
+}
+
+.flash-up {
+  animation: flashGreen 0.8s ease-out;
+}
+
+.flash-down {
+  animation: flashRed 0.8s ease-out;
+}
+
+/* Form Styles */
+.form-group {
+  margin-bottom: 16px;
+}
+.form-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.form-input {
+  width: 100%;
+  background: var(--bg-color);
+  border: 1px solid var(--panel-border);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  font-family: 'JetBrains Mono', monospace;
+  transition: border-color 0.15s ease;
+}
+.form-input:focus {
+  border-color: var(--text-primary);
+  outline: none;
+  box-shadow: none !important;
+}
+
+/* Grid systems & tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  border: 1px solid var(--panel-border);
+  padding: 8px 12px;
+  font-size: 0.82rem;
+}
+th {
+  background: var(--panel-bg);
+  font-family: 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+tr:hover td {
+  background: var(--panel-hover);
+}
+
+/* Utility Theme Toggle Button Styles */
+.theme-toggle-btn {
+  background: none;
+  border: 1px solid var(--panel-border);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.theme-toggle-btn:hover {
+  border-color: var(--text-primary);
+}
