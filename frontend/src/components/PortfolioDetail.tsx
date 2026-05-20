@@ -130,9 +130,51 @@ export const PortfolioDetail: React.FC<PortfolioDetailProps> = ({ portfolio, tok
 
   useEffect(() => {
     fetchDetails();
-    const interval = setInterval(fetchDetails, 3000); // refresh every 3 seconds for live PnL updates
-    return () => clearInterval(interval);
+    
+    // Connect to WebSocket for real-time PnL updates
+    const wsUrl = fastapiBaseUrl.replace(/^http/, 'ws') + `/ws/portfolio/${portfolio.id}/pnl`;
+    const ws = new WebSocket(wsUrl);
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setPositions(data.positions || []);
+        setSummary(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            unrealized_pnl: data.unrealized_pnl,
+            total_pnl: prev.realized_pnl + data.unrealized_pnl,
+            // Update available and invested cash from WebSocket if provided
+            available_cash: data.available_cash !== undefined ? data.available_cash : prev.available_cash,
+            invested_cash: data.invested_cash !== undefined ? data.invested_cash : prev.invested_cash,
+          };
+        });
+      } catch (err) {
+        console.error("Failed to parse websocket message", err);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    return () => {
+      ws.close();
+    };
   }, [portfolio.id, fastapiBaseUrl]);
+
+  // Sync summary with portfolio prop when it changes (e.g., after placing a trade)
+  useEffect(() => {
+    setSummary(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        available_cash: portfolio.available_cash,
+        invested_cash: portfolio.invested_cash,
+      };
+    });
+  }, [portfolio.available_cash, portfolio.invested_cash]);
 
   const handleCancelOrder = async (orderId: number) => {
     try {

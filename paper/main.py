@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -17,6 +17,9 @@ from sqlmodel import Session, select
 from decimal import Decimal
 
 logging.basicConfig(level=logging.WARNING)
+
+
+from paper.services.websocket import ws_manager, get_live_portfolio_pnl, broadcast_price_update
 
 
 @asynccontextmanager
@@ -45,6 +48,9 @@ async def lifespan(app: FastAPI):
     # Hook execution engine into market data feed.
     # Every price tick now automatically triggers order matching + SL/TP checks.
     market_data_streamer.register_price_callback(order_executor.check_on_price_update)
+
+    # Register websocket broadcast callback
+    market_data_streamer.register_price_callback(broadcast_price_update)
 
     yield
 
@@ -246,6 +252,26 @@ async def update_position(
         return {"message": "Position updated", "position": position}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.websocket("/ws/portfolio/{portfolio_id}/pnl")
+async def websocket_portfolio_pnl(websocket: WebSocket, portfolio_id: int):
+    """WebSocket endpoint to stream real-time PnL updates."""
+    await ws_manager.connect(websocket, portfolio_id)
+    try:
+        # Send initial state immediately
+        initial_pnl = get_live_portfolio_pnl(portfolio_id)
+        await websocket.send_json(initial_pnl)
+        
+        # Keep connection open
+        while True:
+            # We don't expect messages from client, but we wait for disconnect
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket, portfolio_id)
+    except Exception as e:
+        logging.error(f"WebSocket error for portfolio {portfolio_id}: {e}")
+        ws_manager.disconnect(websocket, portfolio_id)
 
 
 # ═══════════════════════════ Position History (Analytics) ════════════════════

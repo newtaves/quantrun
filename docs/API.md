@@ -118,6 +118,23 @@ Full PnL Report.
 Retrieve all closed trades for analytics.
 - **Fields**: `entry_price`, `exit_price`, `realized_pnl`, `exit_reason` (STOPLOSS/TARGET/MANUAL), `opened_at`, `closed_at`.
 
+### `WS /ws/portfolio/{portfolio_id}/pnl`
+WebSocket endpoint that streams real-time portfolio updates (especially unrealized PnL and active positions) every time market prices change.
+- **Message Format**:
+  ```json
+  {
+    "unrealized_pnl": 123.45,
+    "positions": [
+      {
+        "position_id": 1,
+        "symbol": "BTCUSDT",
+        "current_price": 64200.5,
+        "unrealized_pnl": 50.0
+      }
+    ]
+  }
+  ```
+
 ---
 
 ## Service Internals
