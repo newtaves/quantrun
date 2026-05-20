@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search } from 'lucide-react';
+import { CoinIcon } from './CoinIcon';
 
 interface TradingTerminalProps {
   portfolioId: number | null;
@@ -195,9 +196,6 @@ export const TradingTerminal: React.FC<TradingTerminalProps> = ({ portfolioId, t
   const validCustomTicker = typedSymbol ? (typedSymbol.endsWith('USDT') ? typedSymbol : `${typedSymbol}USDT`) : '';
   const showCustomOption = validCustomTicker && !allSymbols.includes(validCustomTicker) && validCustomTicker.length >= 5;
 
-  const getCryptoIconSymbol = (sym: string) => {
-    return CRYPTO_META[sym]?.symbol || '◈';
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -278,7 +276,10 @@ export const TradingTerminal: React.FC<TradingTerminalProps> = ({ portfolioId, t
                         justifyContent: 'space-between'
                       }}
                     >
-                      <span>⊕ CHOOSE: {validCustomTicker}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <CoinIcon symbol={validCustomTicker} style={{ width: '16px', height: '16px' }} />
+                        <span>CHOOSE: {validCustomTicker}</span>
+                      </span>
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>QUERY LIVE INDEX</span>
                     </div>
                   )}
@@ -297,7 +298,10 @@ export const TradingTerminal: React.FC<TradingTerminalProps> = ({ portfolioId, t
                         justifyContent: 'space-between'
                       }}
                     >
-                      <span>{getCryptoIconSymbol(sym)} {sym}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <CoinIcon symbol={sym} style={{ width: '16px', height: '16px' }} />
+                        <span>{sym}</span>
+                      </span>
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
                         {prices[sym] ? `$${prices[sym].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'QUERY INDEX'}
                       </span>

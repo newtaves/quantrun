@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Search, TrendingUp, TrendingDown, Calendar, BarChart2 } from 'lucide-react';
+import { CoinIcon } from './CoinIcon';
 
 interface ChartPoint {
   date: string;
@@ -169,9 +170,6 @@ export const ChartBrowser: React.FC = () => {
   const validCustomTicker = typedQuery ? (typedQuery.endsWith('USDT') ? typedQuery : `${typedQuery}USDT`) : '';
   const showCustomOption = validCustomTicker && !CRYPTO_OPTIONS.some(o => o.value === validCustomTicker) && validCustomTicker.length >= 5;
 
-  const getCryptoIconSymbol = (sym: string) => {
-    return CRYPTO_OPTIONS.find(c => c.value === sym)?.symbol || '◈';
-  };
 
   const getCryptoLabel = (sym: string) => {
     return CRYPTO_OPTIONS.find(c => c.value === sym)?.label || `${sym} Index`;
@@ -247,7 +245,10 @@ export const ChartBrowser: React.FC = () => {
                 fontSize: '0.78rem'
               }}
             >
-              <span>{opt.symbol} {opt.value}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <CoinIcon symbol={opt.value} style={{ width: '16px', height: '16px' }} />
+                <span>{opt.value}</span>
+              </span>
             </button>
           ))}
           
@@ -282,8 +283,9 @@ export const ChartBrowser: React.FC = () => {
                 {stats.changePct >= 0 ? '+' : ''}{stats.changePct.toFixed(2)}% ({timeframe})
               </span>
             </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '2px', fontFamily: 'JetBrains Mono, monospace' }}>
-              {getCryptoIconSymbol(selectedTicker)} {getCryptoLabel(selectedTicker)} Historical Spot Index
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '2px', fontFamily: 'JetBrains Mono, monospace', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <CoinIcon symbol={selectedTicker} style={{ width: '16px', height: '16px' }} />
+              <span>{getCryptoLabel(selectedTicker)} Historical Spot Index</span>
             </p>
           </div>
 
