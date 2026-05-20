@@ -14,4 +14,10 @@ urlpatterns = [
     path("tokens/", views.token_list, name="token_list"),
     path("tokens/generate/", views.token_generate, name="token_generate"),
     path("tokens/<int:token_id>/revoke/", views.token_revoke, name="token_revoke"),
+    path("api/signup/", views.api_signup, name="api_signup"),
+    path("api/login/", views.api_login, name="api_login"),
+    path("api/logout/", views.api_logout, name="api_logout"),
+    path("api/tokens/", views.api_token_list, name="api_token_list"),
+    path("api/tokens/generate/", views.api_token_generate, name="api_token_generate"),
+    path("api/tokens/<int:token_id>/revoke/", views.api_token_revoke, name="api_token_revoke"),
 ]

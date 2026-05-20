@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone as django_timezone
 from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
 
 from .models import APIToken, Order, OrderSide, OrderStatus, Portfolio
 
@@ -305,3 +306,154 @@ def token_revoke(request, token_id):
         token.save()
         messages.success(request, "Token revoked.")
     return redirect("token_list")
+
+
+@csrf_exempt
+def api_signup(request):
+    from django.http import JsonResponse
+    from django.contrib.auth.models import User
+    
+    if request.method != "POST":
+        return JsonResponse({"detail": "Only POST requests allowed"}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        username = data.get("username", "").strip()
+        password = data.get("password", "").strip()
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON body"}, status=400)
+        
+    if not username or not password:
+        return JsonResponse({"detail": "Username and password are required"}, status=400)
+        
+    if User.objects.filter(username=username).exists():
+        return JsonResponse({"detail": "Username already exists"}, status=400)
+        
+    try:
+        user = User.objects.create_user(username=username, password=password)
+        token = _get_user_token(user)
+        return JsonResponse({
+            "token": token,
+            "user": {
+                "id": user.id,
+                "username": user.username
+            }
+        }, status=201)
+    except Exception as e:
+        return JsonResponse({"detail": str(e)}, status=500)
+
+
+@csrf_exempt
+def api_login(request):
+    from django.http import JsonResponse
+    from django.contrib.auth import authenticate
+    
+    if request.method != "POST":
+        return JsonResponse({"detail": "Only POST requests allowed"}, status=405)
+        
+    try:
+        data = json.loads(request.body)
+        username = data.get("username", "").strip()
+        password = data.get("password", "").strip()
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON body"}, status=400)
+        
+    if not username or not password:
+        return JsonResponse({"detail": "Username and password are required"}, status=400)
+        
+    user = authenticate(username=username, password=password)
+    if user is not None:
+        token = _get_user_token(user)
+        return JsonResponse({
+            "token": token,
+            "user": {
+                "id": user.id,
+                "username": user.username
+            }
+        })
+    else:
+        return JsonResponse({"detail": "Invalid username or password"}, status=400)
+
+
+@csrf_exempt
+def api_logout(request):
+    from django.http import JsonResponse
+    
+    if request.method != "POST":
+        return JsonResponse({"detail": "Only POST requests allowed"}, status=405)
+        
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token_str = auth_header[7:].strip()
+        APIToken.objects.filter(token=token_str, is_active=True).update(is_active=False)
+        return JsonResponse({"detail": "Logged out successfully (token revoked)"})
+        
+    return JsonResponse({"detail": "No active token provided in Authorization header"}, status=400)
+
+
+def _api_get_user(request):
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token_str = auth_header[7:].strip()
+        try:
+            payload = jwt.decode(token_str, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+            user_id = payload.get("user_id")
+            from django.contrib.auth.models import User
+            user = User.objects.get(id=user_id)
+            if APIToken.objects.filter(token=token_str, is_active=True).exists():
+                return user
+        except Exception:
+            return None
+    return None
+
+
+@csrf_exempt
+def api_token_list(request):
+    from django.http import JsonResponse
+    user = _api_get_user(request)
+    if not user:
+        return JsonResponse({"detail": "Unauthorized"}, status=401)
+        
+    tokens = APIToken.objects.filter(user=user).order_by("-created_at")
+    return JsonResponse({
+        "tokens": [
+            {
+                "id": t.id,
+                "token": t.token,
+                "created_at": t.created_at.isoformat(),
+                "expires_at": t.expires_at.isoformat(),
+                "is_active": t.is_active
+            }
+            for t in tokens
+        ]
+    })
+
+
+@csrf_exempt
+def api_token_generate(request):
+    from django.http import JsonResponse
+    user = _api_get_user(request)
+    if not user:
+        return JsonResponse({"detail": "Unauthorized"}, status=401)
+        
+    if request.method != "POST":
+        return JsonResponse({"detail": "Only POST allowed"}, status=405)
+        
+    token = _get_user_token(user)
+    return JsonResponse({"detail": "New API token generated", "token": token}, status=201)
+
+
+@csrf_exempt
+def api_token_revoke(request, token_id):
+    from django.http import JsonResponse
+    user = _api_get_user(request)
+    if not user:
+        return JsonResponse({"detail": "Unauthorized"}, status=401)
+        
+    if request.method != "POST":
+        return JsonResponse({"detail": "Only POST allowed"}, status=405)
+        
+    token = get_object_or_404(APIToken, id=token_id, user=user)
+    token.is_active = False
+    token.save()
+    return JsonResponse({"detail": "Token revoked"})

@@ -38,12 +38,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'dashboard',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -127,3 +129,11 @@ FASTAPI_BASE_URL = os.getenv("FASTAPI_BASE_URL", "http://127.0.0.1:8000")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "quant-run-secret-jwt-key-change-in-production-2026-secure")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_DAYS = 30
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+]
+CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+]
