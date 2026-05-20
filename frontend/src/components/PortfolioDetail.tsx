@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { DollarSign, ArrowUpRight, ArrowDownRight, RefreshCw, X, ShieldAlert, Award, Edit2, Check, CornerDownRight } from 'lucide-react';
+import { CoinIcon } from './CoinIcon';
 
 interface Position {
   position_id: number;
@@ -139,7 +140,7 @@ export const PortfolioDetail: React.FC<PortfolioDetailProps> = ({ portfolio, tok
       try {
         const data = JSON.parse(event.data);
         setPositions(data.positions || []);
-        setSummary(prev => {
+        setSummary((prev: any) => {
           if (!prev) return prev;
           return {
             ...prev,
@@ -166,7 +167,7 @@ export const PortfolioDetail: React.FC<PortfolioDetailProps> = ({ portfolio, tok
 
   // Sync summary with portfolio prop when it changes (e.g., after placing a trade)
   useEffect(() => {
-    setSummary(prev => {
+    setSummary((prev: any) => {
       if (!prev) return prev;
       return {
         ...prev,
@@ -421,7 +422,12 @@ export const PortfolioDetail: React.FC<PortfolioDetailProps> = ({ portfolio, tok
                   return (
                     <React.Fragment key={pos.position_id}>
                       <tr style={{ borderBottom: '1px solid var(--panel-border)' }}>
-                        <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{pos.symbol}</td>
+                        <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <CoinIcon symbol={pos.symbol} style={{ width: '16px', height: '16px' }} />
+                            <span>{pos.symbol}</span>
+                          </span>
+                        </td>
                         <td>
                           <span className={`badge ${pos.side === 'BUY' ? 'badge-buy' : 'badge-sell'}`}>{pos.side}</span>
                         </td>
@@ -557,7 +563,12 @@ export const PortfolioDetail: React.FC<PortfolioDetailProps> = ({ portfolio, tok
                 ) : (
                   pendingOrders.map((order) => (
                     <tr key={order.id} style={{ borderBottom: '1px solid var(--panel-border)' }}>
-                      <td style={{ fontWeight: 700 }}>{order.symbol}</td>
+                      <td style={{ fontWeight: 700 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <CoinIcon symbol={order.symbol} style={{ width: '16px', height: '16px' }} />
+                          <span>{order.symbol}</span>
+                        </span>
+                      </td>
                       <td>
                         <span className={`badge ${order.side === 'BUY' ? 'badge-buy' : 'badge-sell'}`} style={{ padding: '1px 4px', fontSize: '0.62rem' }}>
                           {order.side}
@@ -607,7 +618,12 @@ export const PortfolioDetail: React.FC<PortfolioDetailProps> = ({ portfolio, tok
                     const isRecordPositive = record.realized_pnl >= 0;
                     return (
                       <tr key={record.id} style={{ borderBottom: '1px solid var(--panel-border)' }}>
-                        <td style={{ fontWeight: 700 }}>{record.symbol}</td>
+                        <td style={{ fontWeight: 700 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <CoinIcon symbol={record.symbol} style={{ width: '16px', height: '16px' }} />
+                            <span>{record.symbol}</span>
+                          </span>
+                        </td>
                         <td>
                           <span className={`badge ${record.side === 'BUY' ? 'badge-buy' : 'badge-sell'}`} style={{ padding: '1px 4px', fontSize: '0.62rem' }}>
                             {record.side}
