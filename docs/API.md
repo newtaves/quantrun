@@ -143,3 +143,10 @@ The system uses two primary services to maintain state and performance:
 
 1.  **`OrderExecutor`**: An in-memory engine that holds sorted orderbooks and active positions. It processes every price tick from the websocket to ensure microsecond-level accuracy for SL/TP hits without hitting the database repeatedly.
 2.  **`PortfolioManager`**: Handles the persistence layer and high-level business rules (like checking if you have enough cash before allowing an order).
+
+---
+
+## Broker Adapter Guide
+
+Detailed instructions for adding new broker adapters are available in
+[Broker Adapter Guide](brokers.md).

@@ -60,3 +60,37 @@ You can use AI as much as you want. But make sure that you know what AI is chang
 ## Contribution Guideline
 - Create a fork. And make changes there
 - after that create a pull request
+
+
+---
+
+## Unified Multi-Broker Market Data (overview)
+
+This project now includes a foundation for a unified multi-broker market data
+service implemented under `paper/services/`.
+
+Key modules:
+- `paper/services/brokers/base.py` — `BrokerAdapter` abstract base class.
+- `paper/services/brokers/registry.py` — `BrokerRegistry` for registering and
+	lazily instantiating adapters.
+- `paper/services/brokers/__init__.py` — central registry and builtin adapter
+	registration (currently registers `binance`).
+- `paper/services/brokers/crypto/binance.py` — implemented `BinanceAdapter`.
+- `paper/services/symbols/mapper.py` & `paper/services/symbols/config.py` —
+	symbol mapping and normalization.
+- `paper/services/market_data.py` — streamer now delegates to adapters.
+
+How to add brokers (short):
+1. Implement a new adapter subclassing `BrokerAdapter` and place it under
+	 `paper/services/brokers/<category>/`.
+2. Implement required methods: `broker_name`, `asset_class`, `websocket_url`,
+	 `normalize_symbol`, `denormalize_symbol`, `stream_name`, `process_message`,
+	 `fetch_price`, `fetch_historical_data`.
+3. Register the adapter in `paper/services/brokers/__init__.py` using the
+	 shared registry: `_registry.register("yourbroker", YourAdapter)`.
+4. Add symbol mappings in `paper/services/symbols/config.py` as needed.
+
+Dependencies: adapters commonly use `httpx`, `websockets`; stock adapters may
+use `yfinance`.
+
+See `paper/services/brokers/README.md` for a more detailed how-to.

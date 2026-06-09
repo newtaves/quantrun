@@ -8,12 +8,16 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 import websockets
 from websockets.exceptions import ConnectionClosed
+from paper.services.brokers import get_registry
 
 
 class MarketDataStreamer:
-    """Manage Binance market-price websocket subscriptions and shared price cache."""
+    """Manage market-price websocket subscriptions and shared price cache.
 
-    WS_URL = "wss://stream.binance.com:9443/ws"
+    Currently this streamer uses a registered broker adapter (Binance)
+    and delegates symbol normalization, stream naming, message parsing
+    and REST price fetches to that adapter.
+    """
     DEFAULT_SYMBOLS = [
         "BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", 
         "DOTUSDT", "LTCUSDT", "DOGEUSDT", "XRPUSDT"
@@ -32,9 +36,16 @@ class MarketDataStreamer:
         # Callbacks invoked with {symbol: price} on every price update.
         # Register via register_price_callback() to avoid circular imports.
         self._price_callbacks: List[Callable[[Dict[str, float]], None]] = []
+        # Initialize broker registry and adapter (Binance)
+        registry = get_registry()
+        self._broker_adapter = registry.get("binance")
+        if self._broker_adapter is None:
+            logging.error("Binance adapter not available in BrokerRegistry")
 
     def _stream_name(self, symbol: str) -> str:
-        """Return the websocket stream name for a symbol."""
+        """Return the websocket stream name for a symbol via adapter."""
+        if self._broker_adapter:
+            return self._broker_adapter.stream_name(symbol)
         return f"{symbol.lower()}@bookTicker"
 
     def _is_connection_open(self) -> bool:
@@ -64,10 +75,16 @@ class MarketDataStreamer:
         """Open a new Binance websocket connection if none exists."""
         if self._is_connection_open():
             return
+        # Prefer adapter-provided websocket URL when available
+        ws_url = None
+        if self._broker_adapter:
+            ws_url = getattr(self._broker_adapter, "websocket_url", None)
+        if not ws_url:
+            ws_url = "wss://stream.binance.com:9443/ws"
 
-        logging.info(f"Connecting Binance market price websocket: {self.WS_URL}")
+        logging.info(f"Connecting market price websocket: {ws_url}")
         self._ws_connection = await websockets.connect(
-            self.WS_URL, ping_interval=20, ping_timeout=10
+            ws_url, ping_interval=20, ping_timeout=10
         )
         asyncio.create_task(self._receive_loop(self._ws_connection))
 
@@ -110,33 +127,45 @@ class MarketDataStreamer:
         if not isinstance(data, dict):
             return
 
-        symbol = data.get("s")
-        bid_price = data.get("b")
-        ask_price = data.get("a")
-        if symbol is None or ask_price is None or bid_price is None:
-            return
-
+        # Let the broker adapter parse messages when possible
+        parsed = None
         try:
-            price = (float(bid_price)+float(ask_price))/2
-        except (ValueError, TypeError):
-            logging.warning(f"Unable to parse price for {symbol}: {ask_price}, {bid_price}")
-            return
+            if self._broker_adapter:
+                parsed = self._broker_adapter.process_message(data)
+            else:
+                # fallback to Binance-style parsing
+                symbol = data.get("s")
+                bid_price = data.get("b")
+                ask_price = data.get("a")
+                if symbol is None or ask_price is None or bid_price is None:
+                    return
+                try:
+                    price = (float(bid_price) + float(ask_price)) / 2.0
+                    parsed = (symbol.upper(), price)
+                except (ValueError, TypeError):
+                    logging.warning(f"Unable to parse price: {data}")
+                    return
 
-        # Skip processing if price hasn't changed
-        old_price = self._get_cached_price(symbol.upper())
-        if old_price == price:
-            return
+            if not parsed:
+                return
 
-        self.set_market_price(symbol, price)
-        # Optional: reduce logging noise by only logging actual changes
-        logging.info(f"Updated market price: {symbol}={price}")
+            symbol, price = parsed
 
-        # Fire all registered callbacks (e.g. execution engine order matching)
-        for callback in self._price_callbacks:
-            try:
-                callback({symbol: price})
-            except Exception as exc:
-                logging.error(f"Price callback error: {exc}")
+            # Skip processing if price hasn't changed
+            old_price = self._get_cached_price(symbol.upper())
+            if old_price == price:
+                return
+
+            self.set_market_price(symbol, price)
+            logging.info(f"Updated market price: {symbol}={price}")
+
+            for callback in self._price_callbacks:
+                try:
+                    callback({symbol: price})
+                except Exception as exc:
+                    logging.error(f"Price callback error: {exc}")
+        except Exception as exc:
+            logging.error(f"Error processing websocket message: {exc}")
 
     async def _resubscribe_active_streams(self) -> None:
         """Resubscribe all currently active streams after reconnect."""
@@ -246,13 +275,22 @@ class MarketDataStreamer:
         if current_price:
             return current_price
         else:
-            # Use an AsyncClient for non-blocking I/O
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(f"https://api.binance.com/api/v3/ticker/price?symbol={normalized}")
-                
-            if resp.status_code == 200:
-                data = resp.json()
-                price = float(data.get('price'))
+            # Delegate REST price fetch to adapter when available
+            price = None
+            try:
+                if self._broker_adapter:
+                    price = await self._broker_adapter.fetch_price(normalized)
+                else:
+                    # Use an AsyncClient for non-blocking I/O
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(f"https://api.binance.com/api/v3/ticker/price?symbol={normalized}")
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        price = float(data.get("price"))
+            except Exception as exc:
+                logging.error(f"Error fetching price for {normalized}: {exc}")
+
+            if price is not None:
                 self.set_market_price(normalized, price)
                 await self._subscribe_symbols([normalized])
                 return price
