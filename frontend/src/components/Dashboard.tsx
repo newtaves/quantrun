@@ -407,7 +407,7 @@ export const Dashboard: React.FC = () => {
         {currentTab === 'tokens' ? (
           <TokenManager token={token!} />
         ) : currentTab === 'charts' ? (
-          <ChartBrowser />
+          <ChartBrowser fastapiBaseUrl={fastapiBaseUrl} />
         ) : selectedPortfolio ? (
           
           /* Split view for selected portfolio details + trading desk */

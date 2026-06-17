@@ -7,6 +7,8 @@ import os
 import traceback
 from typing import Optional
 
+import httpx
+
 from paper.db.models import ExitReason, Order, OrderSide, OrderStatus, Portfolio
 from paper.db import get_db
 from paper.services.market_data import DEFAULT_SYMBOLS, market_data_streamer
@@ -88,6 +90,37 @@ async def symbol_price(symbol: str):
     if price is None:
         raise HTTPException(status_code=404, detail=f"Unable to fetch price for {symbol}")
     return {"symbol": symbol, "price": price}
+
+
+# ═══════════════════════════ Historical Klines (via Binance proxy) ═════════════
+
+@app.get("/klines/{symbol}")
+async def get_klines(symbol: str, interval: str = "1d", limit: int = 365):
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://api.binance.com/api/v3/klines",
+            params={"symbol": symbol.upper(), "interval": interval, "limit": min(limit, 1000)}
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=f"Binance API error: {resp.text}")
+
+    data = resp.json()
+    return {
+        "symbol": symbol.upper(),
+        "interval": interval,
+        "klines": [
+            {
+                "open_time": k[0],
+                "open": float(k[1]),
+                "high": float(k[2]),
+                "low": float(k[3]),
+                "close": float(k[4]),
+                "volume": float(k[5]),
+                "close_time": k[6],
+            }
+            for k in data
+        ]
+    }
 
 
 # ═══════════════════════════ Portfolio CRUD ═══════════════════════════════════

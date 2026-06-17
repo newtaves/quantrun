@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Search, TrendingUp, TrendingDown, Calendar, BarChart2 } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, Calendar, BarChart2, Loader2 } from 'lucide-react';
 import { CoinIcon } from './CoinIcon';
 
 interface ChartPoint {
@@ -8,7 +8,10 @@ interface ChartPoint {
   Price: number;
 }
 
-// Expanded catalog of popular coins
+interface ChartBrowserProps {
+  fastapiBaseUrl: string;
+}
+
 const CRYPTO_OPTIONS = [
   { value: 'BTCUSDT', label: 'Bitcoin (BTC)', symbol: '₿' },
   { value: 'ETHUSDT', label: 'Ethereum (ETH)', symbol: 'Ξ' },
@@ -46,119 +49,74 @@ const CRYPTO_OPTIONS = [
   { value: 'VETUSDT', label: 'VeChain (VET)', symbol: '🔷' }
 ];
 
-export const ChartBrowser: React.FC = () => {
+const TIMEFRAME_MAP: Record<string, { interval: string; limit: number }> = {
+  '1D': { interval: '1h', limit: 24 },
+  '1W': { interval: '1d', limit: 7 },
+  '1M': { interval: '1d', limit: 30 },
+  '1Y': { interval: '1d', limit: 365 },
+};
+
+export const ChartBrowser: React.FC<ChartBrowserProps> = ({ fastapiBaseUrl }) => {
   const [selectedTicker, setSelectedTicker] = useState<string>('BTCUSDT');
   const [timeframe, setTimeframe] = useState<'1D' | '1W' | '1M' | '1Y'>('1Y');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  
+
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [stats, setStats] = useState({ high: 0, low: 0, current: 0, changePct: 0 });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Dynamically generate high quality seed-based market data
-  const generateMarketHistory = (ticker: string, tf: '1D' | '1W' | '1M' | '1Y') => {
-    let initialPrice = 50000;
-    if (ticker.includes('ETH')) initialPrice = 3000;
-    if (ticker.includes('SOL')) initialPrice = 140;
-    if (ticker.includes('ADA')) initialPrice = 0.45;
-    if (ticker.includes('DOT')) initialPrice = 6.20;
-    if (ticker.includes('LTC')) initialPrice = 82;
-    if (ticker.includes('DOGE')) initialPrice = 0.15;
-    if (ticker.includes('XRP')) initialPrice = 0.50;
-    if (ticker.includes('BNB')) initialPrice = 580;
-    if (ticker.includes('AVAX')) initialPrice = 34;
-    if (ticker.includes('LINK')) initialPrice = 15;
-    if (ticker.includes('NEAR')) initialPrice = 6.80;
-    if (ticker.includes('ATOM')) initialPrice = 8.50;
-    if (ticker.includes('TRX')) initialPrice = 0.12;
-    if (ticker.includes('SHIB')) initialPrice = 0.000022;
-    if (ticker.includes('MATIC')) initialPrice = 0.68;
-    if (ticker.includes('ETC')) initialPrice = 28;
-    if (ticker.includes('FIL')) initialPrice = 5.40;
-    if (ticker.includes('LDO')) initialPrice = 1.95;
-    if (ticker.includes('APT')) initialPrice = 8.20;
-    if (ticker.includes('OP')) initialPrice = 2.45;
-    if (ticker.includes('ARB')) initialPrice = 0.95;
-    if (ticker.includes('RENDER')) initialPrice = 8.10;
-    if (ticker.includes('INJ')) initialPrice = 24.50;
-    if (ticker.includes('SUI')) initialPrice = 1.05;
-    if (ticker.includes('TIA')) initialPrice = 4.80;
-    if (ticker.includes('SEI')) initialPrice = 0.52;
-    if (ticker.includes('ICP')) initialPrice = 11.20;
-    if (ticker.includes('STX')) initialPrice = 1.85;
-    if (ticker.includes('GRT')) initialPrice = 0.22;
-    if (ticker.includes('GALA')) initialPrice = 0.042;
-    if (ticker.includes('IMX')) initialPrice = 1.50;
-    if (ticker.includes('FTM')) initialPrice = 0.72;
-    if (ticker.includes('VET')) initialPrice = 0.035;
-
-    let points = 365;
-    if (tf === '1M') points = 30;
-    if (tf === '1W') points = 7;
-    if (tf === '1D') points = 24;
-
-    const data: ChartPoint[] = [];
-    const seed = ticker.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) + (tf.charCodeAt(0) * 10);
-    let rng = seed;
-    
-    const nextRandom = () => {
-      rng = (rng * 9301 + 49297) % 233280;
-      return rng / 233280;
-    };
-
-    const startDate = new Date();
+  const formatKlineDate = (openTime: number, tf: string) => {
+    const d = new Date(openTime);
     if (tf === '1D') {
-      startDate.setHours(startDate.getHours() - 24);
-    } else {
-      startDate.setDate(startDate.getDate() - points);
+      return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
     }
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
 
-    let price = initialPrice * (0.8 + nextRandom() * 0.4); // slightly randomized start
-    let highest = price;
-    let lowest = price;
-    const startPrice = price;
+  const fetchKlines = async (ticker: string, tf: '1D' | '1W' | '1M' | '1Y') => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { interval, limit } = TIMEFRAME_MAP[tf];
+      const resp = await fetch(
+        `${fastapiBaseUrl}/klines/${ticker}?interval=${interval}&limit=${limit}`
+      );
+      if (!resp.ok) {
+        throw new Error(`Failed to fetch historical data for ${ticker}`);
+      }
+      const data = await resp.json();
+      const klines = data.klines || [];
 
-    for (let i = 0; i < points; i++) {
-      const currentDate = new Date(startDate);
-      let dateLabel = '';
-      
-      if (tf === '1D') {
-        currentDate.setHours(currentDate.getHours() + i);
-        dateLabel = currentDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
-      } else {
-        currentDate.setDate(currentDate.getDate() + i);
-        dateLabel = currentDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      if (klines.length === 0) {
+        throw new Error(`No historical data available for ${ticker}`);
       }
 
-      // Volatility modeling based on coin profiles
-      let volatility = 0.02; // standard
-      if (ticker.includes('SOL') || ticker.includes('DOGE') || ticker.includes('SHIB')) volatility = 0.05; // high volatility
-      
-      const change = (nextRandom() - 0.485) * volatility; 
-      price = price * (1 + change);
-      
-      if (price > highest) highest = price;
-      if (price < lowest) lowest = price;
+      const points: ChartPoint[] = klines.map((k: any) => ({
+        date: formatKlineDate(k.open_time, tf),
+        Price: k.close,
+      }));
 
-      data.push({
-        date: dateLabel,
-        Price: parseFloat(price.toFixed(price < 1 ? 5 : 2))
-      });
+      const prices = klines.map((k: any) => k.close);
+      const high = Math.max(...prices);
+      const low = Math.min(...prices);
+      const current = prices[prices.length - 1];
+      const start = prices[0];
+      const changePct = ((current - start) / start) * 100;
+
+      setChartData(points);
+      setStats({ high, low, current, changePct });
+    } catch (e: any) {
+      setError(e.message || 'Failed to load chart data');
+      setChartData([]);
+    } finally {
+      setIsLoading(false);
     }
-
-    const changePct = ((price - startPrice) / startPrice) * 100;
-
-    setChartData(data);
-    setStats({
-      high: highest,
-      low: lowest,
-      current: price,
-      changePct
-    });
   };
 
   useEffect(() => {
-    generateMarketHistory(selectedTicker, timeframe);
-  }, [selectedTicker, timeframe]);
+    fetchKlines(selectedTicker, timeframe);
+  }, [selectedTicker, timeframe, fastapiBaseUrl]);
 
   const filteredCryptos = CRYPTO_OPTIONS.filter(opt => 
     opt.value.toUpperCase().includes(searchQuery.toUpperCase()) || 
@@ -348,18 +306,37 @@ export const ChartBrowser: React.FC = () => {
         </div>
 
         {/* Historical Price Chart Line */}
-        <div style={{ width: '100%', height: '300px' }}>
-          <ResponsiveContainer>
-            <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={10} tickLine={false} style={{ fontFamily: 'JetBrains Mono, monospace' }} />
-              <YAxis stroke="var(--text-muted)" fontSize={10} tickLine={false} domain={['auto', 'auto']} style={{ fontFamily: 'JetBrains Mono, monospace' }} />
-              <Tooltip
-                contentStyle={{ background: 'var(--panel-bg)', borderColor: 'var(--panel-border)', color: 'var(--text-primary)', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}
-                cursor={{ stroke: 'var(--panel-border)' }}
-              />
-              <Line type="monotone" dataKey="Price" stroke="var(--text-primary)" strokeWidth={1.5} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+        <div style={{ width: '100%', height: '300px', position: 'relative' }}>
+          {isLoading && (
+            <div style={{
+              position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', background: 'var(--panel-bg)', zIndex: 10
+            }}>
+              <Loader2 size={24} className="spin" style={{ color: 'var(--text-muted)' }} />
+            </div>
+          )}
+          {error && !isLoading && (
+            <div style={{
+              height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexDirection: 'column', gap: '8px', color: 'var(--danger)',
+              fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem'
+            }}>
+              <span>{error}</span>
+            </div>
+          )}
+          {!error && (
+            <ResponsiveContainer>
+              <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={10} tickLine={false} style={{ fontFamily: 'JetBrains Mono, monospace' }} />
+                <YAxis stroke="var(--text-muted)" fontSize={10} tickLine={false} domain={['auto', 'auto']} style={{ fontFamily: 'JetBrains Mono, monospace' }} />
+                <Tooltip
+                  contentStyle={{ background: 'var(--panel-bg)', borderColor: 'var(--panel-border)', color: 'var(--text-primary)', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}
+                  cursor={{ stroke: 'var(--panel-border)' }}
+                />
+                <Line type="monotone" dataKey="Price" stroke="var(--text-primary)" strokeWidth={1.5} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Ticker System Logs */}
@@ -375,11 +352,11 @@ export const ChartBrowser: React.FC = () => {
         }}>
           <div style={{ display: 'flex', gap: '8px', color: 'var(--text-muted)' }}>
             <Calendar size={12} style={{ marginTop: '1px' }} />
-            <span>[DATA STREAM] HISTORICAL INTERVAL RESOLVED: Daily resolution candle feed parsed under seed schema [{selectedTicker}].</span>
+            <span>[DATA STREAM] Binance klines candle feed resolved: {chartData.length} candles for {selectedTicker} ({TIMEFRAME_MAP[timeframe].interval} resolution).</span>
           </div>
           <div style={{ display: 'flex', gap: '8px', color: 'var(--text-muted)' }}>
             <BarChart2 size={12} style={{ marginTop: '1px' }} />
-            <span>[VOLATILITY] Seed-based simulation complete. Realized standard deviation of {volatilityFactor(selectedTicker)}% calculated successfully.</span>
+            <span>[PRICE] Live Binance market data. Current: ${stats.current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} | Change: {stats.changePct >= 0 ? '+' : ''}{stats.changePct.toFixed(2)}% ({timeframe}).</span>
           </div>
         </div>
 
@@ -387,10 +364,4 @@ export const ChartBrowser: React.FC = () => {
 
     </div>
   );
-};
-
-const volatilityFactor = (ticker: string): string => {
-  if (ticker.includes('BTC') || ticker.includes('ETH')) return '1.8';
-  if (ticker.includes('SOL') || ticker.includes('DOGE')) return '4.2';
-  return '2.7';
 };
