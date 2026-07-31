@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthScreen } from './components/AuthScreen';
@@ -44,6 +45,16 @@ function App() {
     <AuthProvider>
       <MainLayout />
     </AuthProvider>
+=======
+import { Dashboard } from './components/Dashboard';
+import { ToastProvider } from './hooks/useToast';
+
+function App() {
+  return (
+    <ToastProvider>
+      <Dashboard />
+    </ToastProvider>
+>>>>>>> remove-django
   );
 }
 

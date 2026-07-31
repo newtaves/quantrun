@@ -269,6 +269,7 @@ tr:hover td {
 .theme-toggle-btn:hover {
   border-color: var(--text-primary);
 }
+<<<<<<< HEAD
 
 @keyframes spin {
   from { transform: rotate(0deg); }
@@ -277,3 +278,5 @@ tr:hover td {
 .spin {
   animation: spin 1s linear infinite;
 }
+=======
+>>>>>>> remove-django
