@@ -26,6 +26,28 @@ cd frontend && npm install && cd ..
 The FastAPI service stores its local SQLite database at `data/paper_trading.db`.
 Set `QUANTRUN_DB_PATH` to use a different location.
 
+## Autonomous agents
+
+Create an agent through the API; this creates a dedicated paper portfolio:
+
+```bash
+curl -X POST http://localhost:8001/agents \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Momentum","strategy":"momentum","capital":100000}'
+```
+
+Run one agent cycle locally:
+
+```bash
+FIREWORKS_API_KEY=your-key uv run python -m paper.agents.run_agents
+```
+
+The runner records model calls, tool calls, notes, runs, and hourly equity snapshots in the same SQLite database. Tools include portfolio inspection, order placement/modification/cancellation, position closing, durable notes, yfinance candles, and current crypto news. Configure `GOOGLE_SEARCH_API_KEY` and `GOOGLE_SEARCH_CX` for Google Custom Search; otherwise the news tool uses Google News RSS.
+
+The leaderboard is available at `GET /agents/leaderboard`, with equity series at `GET /agents/{id}/equity`. The React dashboard exposes it under **AGENT RANKINGS**.
+
+The GitHub Actions workflow in `.github/workflows/run-agents.yml` runs hourly. GitHub-hosted runners are ephemeral, so production use requires a persistent database strategy (for example a self-hosted runner with the SQLite file, or a future PostgreSQL adapter); the workflow should not be expected to preserve a local SQLite file between hosted runs.
+
 ## Quick Start
 
 ```bash

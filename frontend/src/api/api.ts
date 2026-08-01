@@ -26,6 +26,11 @@ export const placeOrder = (portfolioId: number, order: {
 export const cancelOrder = (id: number) => request(`/order/${id}`, { method: 'DELETE' });
 export const closePosition = (portfolioId: number, id: number) =>
   request(`/portfolio/${portfolioId}/positions/${id}`, { method: 'DELETE' });
+export const updatePosition = (portfolioId: number, id: number, target?: number, stoploss?: number) =>
+  request(`/portfolio/${portfolioId}/positions/${id}?${new URLSearchParams({ ...(target !== undefined ? { target: String(target) } : {}), ...(stoploss !== undefined ? { stoploss: String(stoploss) } : {}) })}`, { method: 'PUT' });
 export const getHistory = (portfolioId: number) => request(`/portfolio/${portfolioId}/history`);
 export const getPrices = () => request('/prices');
 export const getPrice = (symbol: string) => request(`/symbol/${symbol}`);
+
+export const getAgentLeaderboard = () => request('/agents/leaderboard');
+export const getAgentEquity = (agentId: number) => request(`/agents/${agentId}/equity`);

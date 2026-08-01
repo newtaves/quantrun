@@ -1,0 +1,26 @@
+name: Run crypto portfolio agents
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "7 * * * *"
+
+jobs:
+  agents:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: latest
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Run agents
+        env:
+          FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          FIREWORKS_MODEL: ${{ vars.FIREWORKS_MODEL }}
+          GOOGLE_SEARCH_API_KEY: ${{ secrets.GOOGLE_SEARCH_API_KEY }}
+          GOOGLE_SEARCH_CX: ${{ secrets.GOOGLE_SEARCH_CX }}
+        run: uv run python -m paper.agents.run_agents

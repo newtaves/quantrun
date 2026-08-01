@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PortfolioDetail } from './PortfolioDetail';
 import { TradingTerminal } from './TradingTerminal';
 import { ChartBrowser } from './ChartBrowser';
+import { AgentLeaderboard } from './AgentLeaderboard';
 import { listPortfolios, createPortfolio, deletePortfolio } from '../api/api';
 import { usePricesWs } from '../hooks/useWs';
 import { useToast } from '../hooks/useToast';
@@ -29,7 +30,7 @@ export const Dashboard: React.FC = () => {
   const { addToast } = useToast();
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [selectedPortfolio, setSelectedPortfolio] = useState<Portfolio | null>(null);
-  const [currentTab, setCurrentTab] = useState<'trading' | 'charts'>('trading');
+  const [currentTab, setCurrentTab] = useState<'trading' | 'charts' | 'agents'>('trading');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('theme') as 'light' | 'dark') || 'dark';
   });
@@ -207,6 +208,12 @@ export const Dashboard: React.FC = () => {
               <BarChart3 size={14} />
               PRICE CHARTS
             </button>
+            <button
+              onClick={() => { setCurrentTab('agents'); setSelectedPortfolio(null); }}
+              style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 10px', border: '1px solid ' + (currentTab === 'agents' ? 'var(--text-primary)' : 'transparent'), background: currentTab === 'agents' ? 'var(--panel-hover)' : 'transparent', color: currentTab === 'agents' ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: currentTab === 'agents' ? 700 : 500, cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'JetBrains Mono, monospace' }}
+            >
+              <Briefcase size={14} /> AGENT RANKINGS
+            </button>
           </div>
         </div>
 
@@ -239,6 +246,8 @@ export const Dashboard: React.FC = () => {
       <main style={{ padding: '24px 32px 32px 32px', maxHeight: '100vh', overflowY: 'auto' }}>
         {currentTab === 'charts' ? (
           <ChartBrowser />
+        ) : currentTab === 'agents' ? (
+          <AgentLeaderboard />
         ) : selectedPortfolio ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px', alignItems: 'start' }}>
             <PortfolioDetail

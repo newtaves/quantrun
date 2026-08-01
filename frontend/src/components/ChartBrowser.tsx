@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Search, TrendingUp, TrendingDown, Calendar, BarChart2 } from 'lucide-react';
 import { CoinIcon } from './CoinIcon';
-import { getPrices } from '../api/api';
+import { usePricesWs } from '../hooks/useWs';
 
 interface ChartPoint {
   date: string;
@@ -52,15 +52,7 @@ export const ChartBrowser: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [stats, setStats] = useState({ high: 0, low: 0, current: 0, changePct: 0 });
-  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
-
-  useEffect(() => {
-    getPrices().then(data => setLivePrices(data.prices || {})).catch(() => {});
-    const iv = setInterval(() => {
-      getPrices().then(data => setLivePrices(data.prices || {})).catch(() => {});
-    }, 3000);
-    return () => clearInterval(iv);
-  }, []);
+  const livePrices = usePricesWs();
 
   const generateMarketHistory = (ticker: string, tf: '1D' | '1W' | '1M' | '1Y') => {
     const basePrices: Record<string, number> = {

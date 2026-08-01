@@ -1,6 +1,7 @@
 import os
 
 from sqlmodel import create_engine, Session
+from sqlmodel import SQLModel
 from sqlalchemy import event
 from pathlib import Path
 
@@ -36,6 +37,14 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.close()
+
+# The existing trading tables are retained for compatibility. Agent tables are
+# additive and are created automatically on first startup. Import all models
+# here too because the hourly runner imports this module before the package
+# facade has loaded them.
+from paper.db import models as _models  # noqa: F401,E402
+
+SQLModel.metadata.create_all(engine)
 
 async def get_db():
     session = Session(engine)

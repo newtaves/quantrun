@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { DollarSign, ArrowUpRight, ArrowDownRight, RefreshCw, X, ShieldAlert, Award, Edit2, Check, CornerDownRight, Briefcase, Clock, History, TrendingUp } from 'lucide-react';
 import { CoinIcon } from './CoinIcon';
-import { getHistory, cancelOrder, closePosition } from '../api/api';
+import { getHistory, cancelOrder, closePosition, updatePosition } from '../api/api';
 import { usePortfolioWs } from '../hooks/useWs';
 import { useToast } from '../hooks/useToast';
 
@@ -92,6 +92,7 @@ export const PortfolioDetail: React.FC<PortfolioDetailProps> = ({ portfolio, onR
   const handleCancelOrder = async (orderId: number) => {
     try {
       await cancelOrder(orderId);
+      await wsData.refresh();
       onRefresh();
       addToast('Order cancelled', 'success');
     } catch (e: any) {
@@ -103,6 +104,7 @@ export const PortfolioDetail: React.FC<PortfolioDetailProps> = ({ portfolio, onR
     if (!window.confirm('EXIT TRADE: Close this position at market price?')) return;
     try {
       await closePosition(portfolio.id, positionId);
+      await wsData.refresh();
       onRefresh();
       addToast('Position closed', 'success');
     } catch (e: any) {
@@ -116,8 +118,15 @@ export const PortfolioDetail: React.FC<PortfolioDetailProps> = ({ portfolio, onR
     setEditTarget(pos.target ? pos.target.toString() : '');
   };
 
-  const handleUpdatePosition = async (_positionId: number) => {
-    setEditingPositionId(null);
+  const handleUpdatePosition = async (positionId: number) => {
+    try {
+      await updatePosition(portfolio.id, positionId, editTarget ? parseFloat(editTarget) : undefined, editStoploss ? parseFloat(editStoploss) : undefined);
+      await wsData.refresh();
+      setEditingPositionId(null);
+      addToast('Position protection updated', 'success');
+    } catch (e: any) {
+      addToast(e.message || 'Failed to update position', 'error');
+    }
   };
 
   const pendingOrders = orders.filter(o => o.status === 'PENDING');
@@ -141,7 +150,7 @@ export const PortfolioDetail: React.FC<PortfolioDetailProps> = ({ portfolio, onR
             {livePortfolio.description || 'Paper trading portfolio'}
           </p>
         </div>
-        <button onClick={() => { fetchHistory(); onRefresh(); }} className="btn" style={{ padding: '6px 12px' }}>
+        <button onClick={() => { fetchHistory(); wsData.refresh(); onRefresh(); }} className="btn" style={{ padding: '6px 12px' }}>
           <RefreshCw size={14} />
           SYNC ENGINE
         </button>

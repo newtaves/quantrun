@@ -9,13 +9,23 @@ from typing import Optional
 
 import httpx
 
-from paper.db.models import ExitReason, Order, OrderSide, OrderStatus, Portfolio
+from paper.db.models import Agent, AgentActivity, AgentNote, AgentRun, ExitReason, Order, OrderSide, OrderStatus, Portfolio
 from paper.db import get_db
 from paper.services.market_data import DEFAULT_SYMBOLS, market_data_streamer
 from paper.services.portfolio_manager import PortfolioManager
 from paper.services.execution_engine import order_executor
 from sqlmodel import Session, select
 from decimal import Decimal
+from sqlmodel import SQLModel
+
+from paper.agents.analytics import agent_metrics, equity_series
+
+
+class AgentCreate(SQLModel):
+    name: str
+    strategy: str = "balanced"
+    capital: Decimal = Decimal("100000")
+    system_prompt: Optional[str] = None
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -43,15 +53,23 @@ async def lifespan(app: FastAPI):
     for pos in order_executor._active_positions.values():
         active_symbols.add(pos.symbol.upper())
 
-    logging.info(f"Starting Binance market price websocket for symbols: {active_symbols}")
-    await market_data_streamer.initialize_price_stream(list(active_symbols))
-
     # Hook execution engine into market data feed.
     # Every price tick now automatically triggers order matching + SL/TP checks.
     market_data_streamer.register_price_callback(order_executor.check_on_price_update)
 
     # Register websocket broadcast callback
     market_data_streamer.register_price_callback(broadcast_price_update)
+
+    logging.info(f"Starting Binance market price websocket for symbols: {active_symbols}")
+    await market_data_streamer.initialize_price_stream(list(active_symbols))
+
+    # Re-evaluate persisted pending orders immediately. This covers orders
+    # created while the service was restarting and does not depend on waiting
+    # for the next websocket tick.
+    for pending_order in pending_orders:
+        price = await market_data_streamer.get_market_price(pending_order.symbol)
+        if price is not None:
+            await order_executor.process_market_tick(pending_order.symbol, Decimal(str(price)))
 
     yield
 
@@ -256,6 +274,7 @@ async def close_position(
     manager = PortfolioManager(session)
     try:
         await manager.close_position(position_id, ExitReason.MANUAL)
+        await ws_manager.broadcast_refresh(portfolio_id)
         return {"message": f"Position #{position_id} closed successfully"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -273,6 +292,7 @@ async def update_position(
     manager = PortfolioManager(session)
     try:
         position = await manager.modify_position(position_id, target, stoploss)
+        await ws_manager.broadcast_refresh(portfolio_id)
         return {"message": "Position updated", "position": position}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -296,6 +316,21 @@ async def websocket_portfolio_pnl(websocket: WebSocket, portfolio_id: int):
     except Exception as e:
         logging.error(f"WebSocket error for portfolio {portfolio_id}: {e}")
         ws_manager.disconnect(websocket, portfolio_id)
+
+
+@app.websocket("/ws/prices")
+async def websocket_prices(websocket: WebSocket):
+    """Stream live market ticks to the React terminal."""
+    await ws_manager.connect_prices(websocket)
+    try:
+        await websocket.send_json({"type": "prices", "prices": market_data_streamer.get_all_market_prices()})
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect_prices(websocket)
+    except Exception as exc:
+        logging.debug("Price websocket closed: %s", exc)
+        ws_manager.disconnect_prices(websocket)
 
 
 # ═══════════════════════════ Position History (Analytics) ════════════════════
@@ -346,6 +381,13 @@ async def create_order(order: Order, session: Session = Depends(get_db)):
         created = await manager.place_order(order)
         # Register with execution engine for matching
         order_executor.add_order(created)
+        # Market orders should fill at the current mark immediately. The
+        # websocket continues handling subsequent ticks and protection levels.
+        if created.limit_price is None:
+            current_price = await market_data_streamer.get_market_price(created.symbol)
+            if current_price is not None:
+                await order_executor.process_market_tick(created.symbol, Decimal(str(current_price)))
+        await ws_manager.broadcast_refresh(order.portfolio_id)
         return {"message": "Order placed successfully", "order": created}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -377,6 +419,7 @@ async def update_order(
         portfolio = session.get(Portfolio, order.portfolio_id)
         if not portfolio:
             raise HTTPException(status_code=403, detail="Access denied")
+        await ws_manager.broadcast_refresh(order.portfolio_id)
         return {"message": "Order updated", "order": order}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -393,6 +436,7 @@ async def cancel_order(order_id: int, session: Session = Depends(get_db)):
         if not portfolio:
             raise HTTPException(status_code=403, detail="Access denied")
         await manager.cancel_order(order_id)
+        await ws_manager.broadcast_refresh(order.portfolio_id)
         return {"message": "Order cancelled"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -439,3 +483,63 @@ async def engine_active_positions():
     """Return current in-memory active positions with live PnL (for debugging)."""
     pnl_data = order_executor.calculate_unrealized_pnl()
     return {"active_positions": pnl_data}
+
+
+# ═══════════════════════════ Agent Operations & Leaderboard ═════════════════
+
+@app.post("/agents")
+def create_agent(data: AgentCreate, session: Session = Depends(get_db)):
+    """Create an isolated paper portfolio and bind one autonomous agent to it."""
+    if data.capital <= 0:
+        raise HTTPException(status_code=400, detail="capital must be greater than zero")
+    portfolio = Portfolio(name=f"AGENT_{data.name.upper()}", description=f"Portfolio managed by {data.name}", available_cash=data.capital)
+    session.add(portfolio)
+    session.commit()
+    session.refresh(portfolio)
+    agent = Agent(
+        name=data.name,
+        strategy=data.strategy,
+        system_prompt=data.system_prompt,
+        portfolio_id=portfolio.id,
+        initial_capital=data.capital,
+    )
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+    return {"agent": agent, "portfolio": portfolio}
+
+
+@app.get("/agents/leaderboard")
+def agents_leaderboard(session: Session = Depends(get_db)):
+    agents = session.exec(select(Agent).where(Agent.active == True)).all()
+    return {"agents": sorted((agent_metrics(session, agent) for agent in agents), key=lambda item: item["total_pnl"], reverse=True)}
+
+
+@app.get("/agents")
+def list_agents(session: Session = Depends(get_db)):
+    agents = session.exec(select(Agent).order_by(Agent.created_at)).all()
+    return {"agents": [{"id": agent.id, "name": agent.name, "strategy": agent.strategy, "portfolio_id": agent.portfolio_id, "active": agent.active, "metrics": agent_metrics(session, agent)} for agent in agents]}
+
+
+@app.get("/agents/{agent_id}/equity")
+def agent_equity(agent_id: int, session: Session = Depends(get_db)):
+    agent = session.get(Agent, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return {"agent_id": agent_id, "series": equity_series(session, agent_id)}
+
+
+@app.get("/agents/{agent_id}/activities")
+def agent_activities(agent_id: int, limit: int = 100, session: Session = Depends(get_db)):
+    if not session.get(Agent, agent_id):
+        raise HTTPException(status_code=404, detail="Agent not found")
+    rows = session.exec(select(AgentActivity).where(AgentActivity.agent_id == agent_id).order_by(AgentActivity.created_at.desc()).limit(min(limit, 500))).all()
+    return {"activities": [{"id": row.id, "run_id": row.run_id, "kind": row.kind, "name": row.name, "input": row.input_json, "output": row.output_json, "success": row.success, "created_at": row.created_at} for row in rows]}
+
+
+@app.get("/agents/{agent_id}/notes")
+def agent_notes(agent_id: int, session: Session = Depends(get_db)):
+    if not session.get(Agent, agent_id):
+        raise HTTPException(status_code=404, detail="Agent not found")
+    rows = session.exec(select(AgentNote).where(AgentNote.agent_id == agent_id).order_by(AgentNote.created_at.desc())).all()
+    return {"notes": rows}
