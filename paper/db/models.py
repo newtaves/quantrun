@@ -42,7 +42,9 @@ class Order(SQLModel, table=True):
 class Portfolio(SQLModel, table=True):
     __tablename__: str = "dashboard_portfolio"
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True)
+    # Kept only for compatibility with existing SQLite files. Authentication
+    # has been removed; every local portfolio belongs to the single workspace.
+    user_id: int = Field(default=1, index=True)
     name: str = Field(max_length=100)
     description: Optional[str] = Field(default=None)
     available_cash: Decimal = Field(default=Decimal("0"))

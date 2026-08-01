@@ -17,8 +17,6 @@ for %%P in (8000 8001 5173) do (
 REM 2. Start services concurrently
 echo Starting quantrun...
 
-start "Django" cmd /k "%PYTHON_BIN% quantrun/manage.py runserver 8000"
-
 start "FastAPI" cmd /k "%PYTHON_BIN% -m uvicorn paper.main:app --port 8001 --reload"
 
 start "Frontend" cmd /k "%NPM_BIN% --prefix frontend run dev"

@@ -22,7 +22,6 @@ fi
 
 # 2. Start services concurrently
 echo "starting quantrun"
-$PYTHON_BIN quantrun/manage.py runserver 8000 &
 $PYTHON_BIN -m uvicorn paper.main:app --port 8001 --reload &
 $NPM_BIN --prefix frontend run dev &
 

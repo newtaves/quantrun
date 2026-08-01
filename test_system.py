@@ -8,15 +8,6 @@ def run_tests():
     # Detect the correct python executable
     python_cmd = "python"
     
-    # Verify we can execute django-admin or run server
-    print("Starting Django server on port 8000...")
-    django_proc = subprocess.Popen(
-        ["uv", "run", python_cmd, "quantrun/manage.py", "runserver", "8000"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
-    )
-
     print("Starting FastAPI server on port 8001...")
     fastapi_proc = subprocess.Popen(
         ["uv", "run", python_cmd, "-m", "uvicorn", "paper.main:app", "--port", "8001"],
@@ -31,13 +22,6 @@ def run_tests():
         time.sleep(10)
 
         # check if servers started successfully (processes are still alive)
-        if django_proc.poll() is not None:
-            stdout, stderr = django_proc.communicate()
-            print("Django failed to start:")
-            print("STDOUT:", stdout)
-            print("STDERR:", stderr)
-            sys.exit(1)
-            
         if fastapi_proc.poll() is not None:
             stdout, stderr = fastapi_proc.communicate()
             print("FastAPI failed to start:")
@@ -45,21 +29,7 @@ def run_tests():
             print("STDERR:", stderr)
             sys.exit(1)
 
-        # 1. Create a unique user via Django api_signup
-        username = f"testuser_{int(time.time())}"
-        password = "testpassword123"
-        print(f"Creating user {username}...")
-        signup_resp = httpx.post(
-            "http://127.0.0.1:8000/api/signup/",
-            json={"username": username, "password": password},
-            headers={"Content-Type": "application/json"},
-            timeout=10.0
-        )
-        assert signup_resp.status_code == 201, f"Signup failed: {signup_resp.status_code} {signup_resp.text}"
-        signup_data = signup_resp.json()
-        token = signup_data["token"]
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        print("User created and token retrieved successfully.")
+        headers = {"Content-Type": "application/json"}
 
         # 2. Create a Portfolio via FastAPI
         print("Creating a portfolio...")
@@ -156,14 +126,11 @@ def run_tests():
         print("\n=== ALL INTEGRATION TESTS PASSED! ===")
 
     finally:
-        print("Shutting down Django and FastAPI servers...")
-        django_proc.terminate()
+        print("Shutting down FastAPI server...")
         fastapi_proc.terminate()
         try:
-            django_proc.wait(timeout=3)
             fastapi_proc.wait(timeout=3)
         except Exception:
-            django_proc.kill()
             fastapi_proc.kill()
         print("Servers shut down.")
 
