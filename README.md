@@ -23,7 +23,8 @@ quantrun init
 cd frontend && npm install && cd ..
 ```
 
-This creates a local SQLite database (`quantrun.db`) in the project root.
+The FastAPI service stores its local SQLite database at `data/paper_trading.db`.
+Set `QUANTRUN_DB_PATH` to use a different location.
 
 ## Quick Start
 
@@ -379,5 +380,4 @@ _registry.register("kraken", KrakenAdapter)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `QUANTRUN_DB` | `./quantrun.db` | Path to SQLite database |
->>>>>>> remove-django
+| `QUANTRUN_DB_PATH` | `./data/paper_trading.db` | Path to SQLite database |

@@ -1,10 +1,18 @@
+import os
+
 from sqlmodel import create_engine, Session
 from sqlalchemy import event
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-db_url = f"sqlite:///{BASE_DIR}/quantrun/db.sqlite3"
+# Override with QUANTRUN_DB_PATH when running in another environment.
+DATABASE_PATH = Path(os.getenv("QUANTRUN_DB_PATH", str(DATA_DIR / "paper_trading.db")))
+DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+db_url = f"sqlite:///{DATABASE_PATH}"
 
 connect_args = {
     'check_same_thread': False,
